@@ -3,12 +3,13 @@ package model
 
 // SshConfig SSH 连接配置
 type SshConfig struct {
-	Host       string `json:"host"`
-	Port       int    `json:"port"`
-	Username   string `json:"username"`
-	Password   string `json:"password"`
-	PrivateKey string `json:"privateKey"`
-	Passphrase string `json:"passphrase"`
+	Host           string `json:"host"`
+	Port           int    `json:"port"`
+	Username       string `json:"username"`
+	Password       string `json:"password"`
+	PrivateKey     string `json:"privateKey"`     // 私钥 PEM 内容
+	PrivateKeyPath string `json:"privateKeyPath"` // 私钥文件路径 (UI 选择后由后端读取)
+	Passphrase     string `json:"passphrase"`
 }
 
 // FileEntry 文件/目录条目
@@ -28,10 +29,13 @@ type TransferTask struct {
 	Direction   string `json:"direction"` // upload / download
 	LocalPath   string `json:"localPath"`
 	RemotePath  string `json:"remotePath"`
+	CurrentFile string `json:"currentFile"` // 当前正在传输的文件
 	Size        int64  `json:"size"`
 	Transferred int64  `json:"transferred"`
 	Status      string `json:"status"` // running / done / error
 	Error       string `json:"error"`
+	Conflict    string `json:"conflict"` // overwrite / skip / rename
+	IsDir       bool   `json:"isDir"`
 }
 
 // StoredSession 保存的会话配置 (不含密码, 密码存系统凭据库)

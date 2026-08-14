@@ -36,6 +36,7 @@ type Session struct {
 	closed     bool
 	output     chan OutputMsg
 	done       chan error
+	stop       chan struct{} // keepalive 停止信号
 	closeOnce  sync.Once
 }
 
@@ -46,6 +47,13 @@ func Connect(cfg model.SshConfig) (*Session, error) {
 	}
 
 	var methods []ssh.AuthMethod
+	if cfg.PrivateKeyPath != "" {
+		pemBytes, err := os.ReadFile(cfg.PrivateKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("读取私钥文件失败: %v", err)
+		}
+		cfg.PrivateKey = string(pemBytes)
+	}
 	if cfg.PrivateKey != "" {
 		var signer ssh.Signer
 		var err error
@@ -118,9 +126,11 @@ func Connect(cfg model.SshConfig) (*Session, error) {
 		stdin:   stdin,
 		output:  make(chan OutputMsg, 64),
 		done:    make(chan error, 1),
+		stop:    make(chan struct{}),
 	}
 	go s.pump(stdout)
 	go s.pump(stderr)
+	go s.keepAlive()
 	go func() {
 		err := sess.Wait()
 		if err == io.EOF {
@@ -130,6 +140,22 @@ func Connect(cfg model.SshConfig) (*Session, error) {
 		s.Close()
 	}()
 	return s, nil
+}
+
+// keepAlive 每 30s 发送保活请求, 会话停止时退出
+func (s *Session) keepAlive() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.stop:
+			return
+		case <-ticker.C:
+			if _, _, err := s.client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
+				return
+			}
+		}
+	}
 }
 
 // pump 读取输出并投递到 channel
@@ -176,6 +202,7 @@ func (s *Session) Resize(rows, cols int) error {
 // Close 关闭会话 (幂等)
 func (s *Session) Close() {
 	s.closeOnce.Do(func() {
+		close(s.stop)
 		s.mu.Lock()
 		s.closed = true
 		s.mu.Unlock()

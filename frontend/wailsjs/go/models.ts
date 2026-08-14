@@ -28,6 +28,7 @@ export namespace model {
 	    username: string;
 	    password: string;
 	    privateKey: string;
+	    privateKeyPath: string;
 	    passphrase: string;
 	
 	    static createFrom(source: any = {}) {
@@ -41,6 +42,7 @@ export namespace model {
 	        this.username = source["username"];
 	        this.password = source["password"];
 	        this.privateKey = source["privateKey"];
+	        this.privateKeyPath = source["privateKeyPath"];
 	        this.passphrase = source["passphrase"];
 	    }
 	}
@@ -70,10 +72,13 @@ export namespace model {
 	    direction: string;
 	    localPath: string;
 	    remotePath: string;
+	    currentFile: string;
 	    size: number;
 	    transferred: number;
 	    status: string;
 	    error: string;
+	    conflict: string;
+	    isDir: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new TransferTask(source);
@@ -86,10 +91,13 @@ export namespace model {
 	        this.direction = source["direction"];
 	        this.localPath = source["localPath"];
 	        this.remotePath = source["remotePath"];
+	        this.currentFile = source["currentFile"];
 	        this.size = source["size"];
 	        this.transferred = source["transferred"];
 	        this.status = source["status"];
 	        this.error = source["error"];
+	        this.conflict = source["conflict"];
+	        this.isDir = source["isDir"];
 	    }
 	}
 

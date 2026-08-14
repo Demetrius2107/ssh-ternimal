@@ -12,6 +12,8 @@ import {
     LocalMkdir,
     LocalDelete,
     LocalRename,
+    PickFile,
+    PickDir,
 } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
@@ -29,6 +31,10 @@ function remoteParent(p: string): string {
     return p.substring(0, idx);
 }
 
+function basename(p: string): string {
+    return p.split(/[\\/]/).pop() || p;
+}
+
 export default function FilePanel({ sessionId }: { sessionId: number }) {
     const [localDir, setLocalDir] = useState('C:\\');
     const [localEntries, setLocalEntries] = useState<model.FileEntry[]>([]);
@@ -39,6 +45,7 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
     const [selLocal, setSelLocal] = useState<model.FileEntry | null>(null);
     const [selRemote, setSelRemote] = useState<model.FileEntry | null>(null);
     const [transfers, setTransfers] = useState<Record<number, model.TransferTask>>({});
+    const [conflict, setConflict] = useState<'overwrite' | 'skip' | 'rename'>('overwrite');
     const [error, setError] = useState('');
 
     async function loadLocal(dir: string) {
@@ -157,12 +164,23 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
     }
 
     async function doUpload() {
-        if (!selLocal || selLocal.isDir) {
-            setError('请先在左侧选中一个本地文件');
+        if (!selLocal) {
+            setError('请先在左侧选中本地文件或目录');
             return;
         }
         try {
-            await SftpUpload(sessionId, selLocal.path, `${remoteDir}/${selLocal.name}`);
+            await SftpUpload(sessionId, selLocal.path, `${remoteDir}/${basename(selLocal.path)}`, conflict);
+            setError('');
+        } catch (e: any) {
+            setError(`上传: ${e?.message ?? e}`);
+        }
+    }
+
+    async function uploadFromDialog(mode: 'file' | 'dir') {
+        try {
+            const p = mode === 'file' ? await PickFile() : await PickDir();
+            if (!p) return;
+            await SftpUpload(sessionId, p, `${remoteDir}/${basename(p)}`, conflict);
             setError('');
         } catch (e: any) {
             setError(`上传: ${e?.message ?? e}`);
@@ -170,12 +188,12 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
     }
 
     async function doDownload() {
-        if (!selRemote || selRemote.isDir) {
-            setError('请先在右侧选中一个远程文件');
+        if (!selRemote) {
+            setError('请先在右侧选中远程文件或目录');
             return;
         }
         try {
-            await SftpDownload(sessionId, selRemote.path, `${localDir}\\${selRemote.name}`);
+            await SftpDownload(sessionId, selRemote.path, `${localDir}\\${basename(selRemote.path)}`, conflict);
             setError('');
         } catch (e: any) {
             setError(`下载: ${e?.message ?? e}`);
@@ -253,8 +271,20 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
             </div>
             {/* 传输动作栏 */}
             <div className="transfer-actions">
-                <button onClick={doUpload} disabled={!selLocal}>⬆ 上传选中</button>
-                <button onClick={doDownload} disabled={!selRemote}>⬇ 下载选中</button>
+                <button onClick={() => uploadFromDialog('file')}>上传文件…</button>
+                <button onClick={() => uploadFromDialog('dir')}>上传目录…</button>
+                <button onClick={doUpload} disabled={!selLocal}>上传选中</button>
+                <button onClick={doDownload} disabled={!selRemote}>下载选中</button>
+                <select
+                    className="conflict-select"
+                    value={conflict}
+                    onChange={(e) => setConflict(e.target.value as 'overwrite' | 'skip' | 'rename')}
+                    title="同名文件冲突策略"
+                >
+                    <option value="overwrite">覆盖</option>
+                    <option value="skip">跳过</option>
+                    <option value="rename">自动改名</option>
+                </select>
                 <button onClick={refreshAll}>刷新全部</button>
             </div>
             {/* 传输队列 */}
@@ -267,9 +297,13 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
                                 <span className={`t-status t-${t.status}`}>{t.direction === 'upload' ? '↑' : '↓'}</span>
                                 <span className="t-name">
                                     {t.direction === 'upload' ? t.localPath : t.remotePath}
+                                    {t.isDir ? ' (📁 目录)' : ''}
+                                    {t.status === 'running' && t.currentFile ? ` → ${t.currentFile}` : ''}
                                 </span>
                                 <span className="t-pct">
-                                    {t.status === 'error' ? t.error : `${formatSize(t.transferred)} / ${formatSize(t.size)} (${pct}%)`}
+                                    {t.status === 'error'
+                                        ? t.error
+                                        : `${formatSize(t.transferred)} / ${formatSize(t.size)} (${pct}%)`}
                                 </span>
                                 <div className="t-bar">
                                     <div className="t-bar-fill" style={{ width: `${pct}%` }} />

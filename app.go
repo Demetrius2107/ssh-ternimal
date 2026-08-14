@@ -187,22 +187,22 @@ func (a *App) SftpChmod(id uint64, p string, mode uint32) error {
 	return sess.Chmod(p, mode)
 }
 
-// SftpUpload 异步上传, 返回任务 ID
-func (a *App) SftpUpload(id uint64, localPath, remotePath string) (uint64, error) {
+// SftpUpload 异步上传 (文件或目录), 返回任务 ID; conflict: overwrite/skip/rename
+func (a *App) SftpUpload(id uint64, localPath, remotePath, conflict string) (uint64, error) {
 	sess, err := a.getSession(id)
 	if err != nil {
 		return 0, err
 	}
-	return a.engine.Upload(id, sess, localPath, remotePath)
+	return a.engine.Upload(id, sess, localPath, remotePath, conflict)
 }
 
-// SftpDownload 异步下载, 返回任务 ID
-func (a *App) SftpDownload(id uint64, remotePath, localPath string) (uint64, error) {
+// SftpDownload 异步下载 (文件或目录), 返回任务 ID; conflict: overwrite/skip/rename
+func (a *App) SftpDownload(id uint64, remotePath, localPath, conflict string) (uint64, error) {
 	sess, err := a.getSession(id)
 	if err != nil {
 		return 0, err
 	}
-	return a.engine.Download(id, sess, remotePath, localPath)
+	return a.engine.Download(id, sess, remotePath, localPath, conflict)
 }
 
 // SftpTasks 返回全部传输任务快照
@@ -235,6 +235,18 @@ func (a *App) LocalDelete(p string) error {
 // LocalRename 本地重命名
 func (a *App) LocalRename(oldP, newP string) error {
 	return localfs.Rename(oldP, newP)
+}
+
+// ---------- 原生文件对话框 ----------
+
+// PickFile 弹出文件选择对话框, 返回选中路径
+func (a *App) PickFile() (string, error) {
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择文件"})
+}
+
+// PickDir 弹出目录选择对话框, 返回选中路径
+func (a *App) PickDir() (string, error) {
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: "选择目录"})
 }
 
 // ---------- 会话管理 ----------

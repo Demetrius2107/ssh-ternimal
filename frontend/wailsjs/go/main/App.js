@@ -34,6 +34,14 @@ export function LocalRename(arg1, arg2) {
   return window['go']['main']['App']['LocalRename'](arg1, arg2);
 }
 
+export function PickDir() {
+  return window['go']['main']['App']['PickDir']();
+}
+
+export function PickFile() {
+  return window['go']['main']['App']['PickFile']();
+}
+
 export function SaveSession(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['SaveSession'](arg1, arg2, arg3, arg4, arg5);
 }
@@ -46,8 +54,8 @@ export function SftpDelete(arg1, arg2) {
   return window['go']['main']['App']['SftpDelete'](arg1, arg2);
 }
 
-export function SftpDownload(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SftpDownload'](arg1, arg2, arg3);
+export function SftpDownload(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SftpDownload'](arg1, arg2, arg3, arg4);
 }
 
 export function SftpListDir(arg1, arg2) {
@@ -70,8 +78,8 @@ export function SftpTasks() {
   return window['go']['main']['App']['SftpTasks']();
 }
 
-export function SftpUpload(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SftpUpload'](arg1, arg2, arg3);
+export function SftpUpload(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SftpUpload'](arg1, arg2, arg3, arg4);
 }
 
 export function SshClose(arg1) {

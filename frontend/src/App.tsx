@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { SshConnect, SaveSession, ListSessions, DeleteSession, LoadSession } from '../wailsjs/go/main/App';
+import { SshConnect, SaveSession, ListSessions, DeleteSession, LoadSession, PickFile } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 import TerminalView from './TerminalView';
 import FilePanel from './FilePanel';
@@ -10,6 +10,9 @@ function App() {
     const [port, setPort] = useState(22);
     const [username, setUsername] = useState('root');
     const [password, setPassword] = useState('');
+    const [authMethod, setAuthMethod] = useState<'password' | 'key'>('password');
+    const [keyPath, setKeyPath] = useState('');
+    const [passphrase, setPassphrase] = useState('');
     const [sessionId, setSessionId] = useState<number | null>(null);
     const [connecting, setConnecting] = useState(false);
     const [error, setError] = useState('');
@@ -62,7 +65,15 @@ function App() {
         setConnecting(true);
         setError('');
         try {
-            const cfg = new model.SshConfig({ host, port, username, password, privateKey: '', passphrase: '' });
+            const cfg = new model.SshConfig({
+                host,
+                port,
+                username,
+                password,
+                privateKey: '',
+                privateKeyPath: authMethod === 'key' ? keyPath : '',
+                passphrase,
+            });
             const id = await SshConnect(cfg);
             if (saveSession) {
                 const name = sessionName.trim() || `${username}@${host}`;
@@ -153,9 +164,48 @@ function App() {
                     <input value={username} onChange={(e) => setUsername(e.target.value)} required />
                 </label>
                 <label>
-                    密码
-                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                    认证方式
+                    <select value={authMethod} onChange={(e) => setAuthMethod(e.target.value as 'password' | 'key')}>
+                        <option value="password">密码</option>
+                        <option value="key">私钥</option>
+                    </select>
                 </label>
+                {authMethod === 'password' ? (
+                    <label>
+                        密码
+                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                    </label>
+                ) : (
+                    <>
+                        <label>
+                            私钥文件
+                            <div className="key-row">
+                                <input
+                                    value={keyPath}
+                                    onChange={(e) => setKeyPath(e.target.value)}
+                                    placeholder="C:\Users\xxx\.ssh\id_rsa"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        const p = await PickFile();
+                                        if (p) setKeyPath(p);
+                                    }}
+                                >
+                                    选择
+                                </button>
+                            </div>
+                        </label>
+                        <label>
+                            私钥口令（可选）
+                            <input
+                                type="password"
+                                value={passphrase}
+                                onChange={(e) => setPassphrase(e.target.value)}
+                            />
+                        </label>
+                    </>
+                )}
                 <label className="save-session">
                     <input type="checkbox" checked={saveSession} onChange={(e) => setSaveSession(e.target.checked)} />
                     连接成功后保存到会话库

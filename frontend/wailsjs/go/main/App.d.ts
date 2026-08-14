@@ -18,13 +18,17 @@ export function LocalParent(arg1:string):Promise<string>;
 
 export function LocalRename(arg1:string,arg2:string):Promise<void>;
 
+export function PickDir():Promise<string>;
+
+export function PickFile():Promise<string>;
+
 export function SaveSession(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string):Promise<string>;
 
 export function SftpChmod(arg1:number,arg2:string,arg3:number):Promise<void>;
 
 export function SftpDelete(arg1:number,arg2:string):Promise<void>;
 
-export function SftpDownload(arg1:number,arg2:string,arg3:string):Promise<number>;
+export function SftpDownload(arg1:number,arg2:string,arg3:string,arg4:string):Promise<number>;
 
 export function SftpListDir(arg1:number,arg2:string):Promise<Array<model.FileEntry>>;
 
@@ -36,7 +40,7 @@ export function SftpRename(arg1:number,arg2:string,arg3:string):Promise<void>;
 
 export function SftpTasks():Promise<Array<model.TransferTask>>;
 
-export function SftpUpload(arg1:number,arg2:string,arg3:string):Promise<number>;
+export function SftpUpload(arg1:number,arg2:string,arg3:string,arg4:string):Promise<number>;
 
 export function SshClose(arg1:number):Promise<void>;
 
