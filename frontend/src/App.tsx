@@ -4,6 +4,7 @@ import { model } from '../wailsjs/go/models';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import ConnectForm from './ConnectForm';
 import Workspace from './Workspace';
+import HomeView from './HomeView';
 import './App.css';
 
 interface OpenSession {
@@ -103,7 +104,7 @@ function App() {
                     </div>
                 ))}
                 {openSessions.length === 0 && (
-                    <div className="empty-hint">点击左上角「＋ 新建连接」建立 SSH 会话</div>
+                    <HomeView onConnected={onConnected} onNewConnect={() => setShowConnect(true)} />
                 )}
             </div>
             {showConnect && (

@@ -69,7 +69,7 @@
     padding: 10px;
     border: none;
     border-radius: 4px;
-    background: #0e639c;
+    background: #007aff;
     color: #fff;
     font-size: 14px;
     cursor: pointer;
@@ -128,7 +128,7 @@
 .terminal-container {
     flex: 1;
     min-height: 0;
-    background: #1e1e1e;
+    background: #283033;
     padding: 4px;
 }
 
@@ -352,7 +352,7 @@
 
 .transfer-actions button {
     padding: 6px 14px;
-    background: #0e639c;
+    background: #007aff;
     color: #fff;
     border: none;
     border-radius: 4px;
@@ -425,7 +425,7 @@
 
 .t-bar-fill {
     height: 100%;
-    background: #0e639c;
+    background: #007aff;
     transition: width 0.2s;
 }
 
@@ -441,15 +441,15 @@
     align-items: center;
     gap: 4px;
     padding: 6px 8px;
-    background: #252526;
-    border-bottom: 1px solid #333;
+    background: #2a2a2c;
+    border-bottom: 1px solid #3a3a3c;
 }
 
 .btn-new {
     padding: 4px 12px;
     border: none;
     border-radius: 4px;
-    background: #0e639c;
+    background: #007aff;
     color: #fff;
     cursor: pointer;
     font-size: 13px;
@@ -483,7 +483,7 @@
 }
 
 .session-tab.active {
-    background: #0e639c;
+    background: #007aff;
     color: #fff;
 }
 
@@ -542,11 +542,13 @@
 }
 
 .modal {
-    background: #2d2d30;
-    border-radius: 8px;
+    background: #2a2a2c;
+    border-radius: 14px;
     padding: 20px;
     max-height: 92vh;
     overflow-y: auto;
+    border: 1px solid #3a3a3c;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }
 
 .modal .connect-panel {
@@ -678,4 +680,156 @@
     color: #ccc;
     white-space: pre-wrap;
     word-break: break-all;
+}
+
+/* ---------- 首页 (快速连接) ---------- */
+.home {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 24px 32px 40px;
+    background: linear-gradient(180deg, #232323 0%, #1e1e1e 100%);
+}
+
+.home-hero {
+    text-align: center;
+    padding: 28px 0 8px;
+}
+
+.home-hero h1 {
+    margin: 0 0 6px;
+    font-size: 28px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.5px;
+}
+
+.home-sub {
+    margin: 0 0 20px;
+    color: #8e8e93;
+    font-size: 14px;
+}
+
+.home-new {
+    padding: 10px 28px;
+    border: none;
+    border-radius: 10px;
+    background: #007aff;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.home-new:hover {
+    background: #0a84ff;
+}
+
+.home-error {
+    max-width: 640px;
+    margin: 12px auto;
+}
+
+.home-section {
+    max-width: 900px;
+    margin: 22px auto 0;
+}
+
+.home-section h2 {
+    margin: 0 0 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #a1a1a6;
+}
+
+.home-empty {
+    padding: 16px;
+    border-radius: 12px;
+    background: #2a2a2c;
+    color: #8e8e93;
+    font-size: 13px;
+    text-align: center;
+}
+
+.home-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.home-card {
+    padding: 14px 16px;
+    background: #2a2a2c;
+    border: 1px solid #3a3a3c;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.home-card:hover {
+    background: #333335;
+    transform: translateY(-1px);
+}
+
+.hc-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.hc-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hc-loading {
+    font-size: 12px;
+    color: #007aff;
+}
+
+.hc-meta {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #8e8e93;
+}
+
+.home-hist {
+    background: #2a2a2c;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.home-hist-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    border-bottom: 1px solid #3a3a3c;
+}
+
+.home-hist-item:last-child {
+    border-bottom: none;
+}
+
+.home-hist-item:hover {
+    background: #333335;
+}
+
+.hh-name {
+    color: #e5e5ea;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hh-meta {
+    color: #8e8e93;
+    flex-shrink: 0;
 }
