@@ -22,7 +22,42 @@ export namespace model {
 	        this.mode = source["mode"];
 	    }
 	}
+	export class HistoryEntry {
+	    name: string;
+	    path: string;
+	    size: number;
+	    modTime: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HistoryEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.size = source["size"];
+	        this.modTime = source["modTime"];
+	    }
+	}
+	export class Metrics {
+	    bytesIn: number;
+	    bytesOut: number;
+	    keepAliveMs: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Metrics(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.bytesIn = source["bytesIn"];
+	        this.bytesOut = source["bytesOut"];
+	        this.keepAliveMs = source["keepAliveMs"];
+	    }
+	}
 	export class SshConfig {
+	    protocol: string;
 	    host: string;
 	    port: number;
 	    username: string;
@@ -37,6 +72,7 @@ export namespace model {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.protocol = source["protocol"];
 	        this.host = source["host"];
 	        this.port = source["port"];
 	        this.username = source["username"];

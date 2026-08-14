@@ -16,14 +16,65 @@ interface SshExit {
     error: string;
 }
 
-// TerminalView 终端组件: 会话输出渲染、输入转发、尺寸同步、查找 (Ctrl+F)
-export default function TerminalView({ sessionId, active }: { sessionId: number; active: boolean }) {
+export type ThemeName = 'dark' | 'light';
+
+// Apple Terminal 调色板: dark = Homebrew, light = Pro
+const THEMES: Record<ThemeName, any> = {
+    dark: {
+        background: '#283033',
+        foreground: '#D9E0E3',
+        cursor: '#D9E0E3',
+        selectionBackground: '#264f78',
+        black: '#000000',
+        red: '#C91B00',
+        green: '#00C200',
+        yellow: '#C7C400',
+        blue: '#0225C7',
+        magenta: '#CA30C7',
+        cyan: '#00C5C7',
+        white: '#C7C7C7',
+        brightBlack: '#686868',
+        brightRed: '#FF6E67',
+        brightGreen: '#5FF967',
+        brightYellow: '#FEFB67',
+        brightBlue: '#6871FF',
+        brightMagenta: '#FF77FF',
+        brightCyan: '#5FFDFF',
+        brightWhite: '#FFFFFF',
+    },
+    light: {
+        background: '#FFFFFF',
+        foreground: '#000000',
+        cursor: '#000000',
+        selectionBackground: '#bcd6ee',
+        black: '#000000',
+        red: '#C91B00',
+        green: '#00C200',
+        yellow: '#C7C400',
+        blue: '#0225C7',
+        magenta: '#CA30C7',
+        cyan: '#00C5C7',
+        white: '#C7C7C7',
+        brightBlack: '#686868',
+        brightRed: '#FF6E67',
+        brightGreen: '#5FF967',
+        brightYellow: '#FEFB67',
+        brightBlue: '#6871FF',
+        brightMagenta: '#FF77FF',
+        brightCyan: '#5FFDFF',
+        brightWhite: '#FFFFFF',
+    },
+};
+
+// TerminalView 终端组件: 输出渲染/输入转发/尺寸同步/查找/右键菜单/主题实时切换
+export default function TerminalView({ sessionId, active, theme }: { sessionId: number; active: boolean; theme: ThemeName }) {
     const containerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const termRef = useRef<Terminal | null>(null);
     const searchAddonRef = useRef<SearchAddon | null>(null);
     const [exitMsg, setExitMsg] = useState('');
     const [showFind, setShowFind] = useState(false);
+    const [ctx, setCtx] = useState<{ x: number; y: number } | null>(null);
 
     useEffect(() => {
         const term = new Terminal({
@@ -31,29 +82,8 @@ export default function TerminalView({ sessionId, active }: { sessionId: number;
             fontSize: 14,
             cursorBlink: true,
             scrollback: 10000,
-            theme: {
-                // Apple Terminal "Homebrew" 调色板
-                background: '#283033',
-                foreground: '#D9E0E3',
-                cursor: '#D9E0E3',
-                selectionBackground: '#264f78',
-                black: '#000000',
-                red: '#C91B00',
-                green: '#00C200',
-                yellow: '#C7C400',
-                blue: '#0225C7',
-                magenta: '#CA30C7',
-                cyan: '#00C5C7',
-                white: '#C7C7C7',
-                brightBlack: '#686868',
-                brightRed: '#FF6E67',
-                brightGreen: '#5FF967',
-                brightYellow: '#FEFB67',
-                brightBlue: '#6871FF',
-                brightMagenta: '#FF77FF',
-                brightCyan: '#5FFDFF',
-                brightWhite: '#FFFFFF',
-            },
+            // 双击选中单词是 xterm 内建默认行为
+            theme: THEMES[theme],
         });
         const fit = new FitAddon();
         const search = new SearchAddon();
@@ -94,7 +124,13 @@ export default function TerminalView({ sessionId, active }: { sessionId: number;
             offExit();
             term.dispose();
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId]);
+
+    // 主题实时切换 (无需重启)
+    useEffect(() => {
+        if (termRef.current) termRef.current.options.theme = THEMES[theme];
+    }, [theme]);
 
     // Ctrl+F 只对激活会话生效
     useEffect(() => {
@@ -110,6 +146,18 @@ export default function TerminalView({ sessionId, active }: { sessionId: number;
         return () => window.removeEventListener('keydown', onKey);
     }, [active]);
 
+    // 右键菜单: 点击别处/失焦关闭
+    useEffect(() => {
+        if (!ctx) return;
+        const close = () => setCtx(null);
+        window.addEventListener('click', close);
+        window.addEventListener('blur', close);
+        return () => {
+            window.removeEventListener('click', close);
+            window.removeEventListener('blur', close);
+        };
+    }, [ctx]);
+
     function doFind(next: boolean) {
         const q = inputRef.current?.value;
         const s = searchAddonRef.current;
@@ -119,6 +167,33 @@ export default function TerminalView({ sessionId, active }: { sessionId: number;
         } else {
             s.findPrevious(q);
         }
+    }
+
+    async function copySelection() {
+        const sel = termRef.current?.getSelection();
+        if (sel) {
+            try {
+                await navigator.clipboard.writeText(sel);
+            } catch {
+                /* 剪贴板不可用时忽略 */
+            }
+        }
+        setCtx(null);
+    }
+
+    async function paste() {
+        try {
+            const text = await navigator.clipboard.readText();
+            if (text) SshSend(sessionId, text);
+        } catch {
+            /* 剪贴板不可用时忽略 */
+        }
+        setCtx(null);
+    }
+
+    function selectAll() {
+        termRef.current?.selectAll();
+        setCtx(null);
     }
 
     return (
@@ -146,7 +221,21 @@ export default function TerminalView({ sessionId, active }: { sessionId: number;
                     <button onClick={() => setShowFind(false)}>关闭</button>
                 </div>
             )}
-            <div className="terminal-container" ref={containerRef} />
+            <div
+                className={`terminal-container ${theme === 'light' ? 'tc-light' : ''}`}
+                ref={containerRef}
+                onContextMenu={(e) => {
+                    e.preventDefault();
+                    setCtx({ x: e.clientX, y: e.clientY });
+                }}
+            />
+            {ctx && (
+                <div className="ctx-menu" style={{ left: ctx.x, top: ctx.y }} onClick={(e) => e.stopPropagation()}>
+                    <button onClick={copySelection}>复制</button>
+                    <button onClick={paste}>粘贴</button>
+                    <button onClick={selectAll}>全选</button>
+                </div>
+            )}
         </div>
     );
 }

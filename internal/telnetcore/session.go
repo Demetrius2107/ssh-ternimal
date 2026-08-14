@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"ssh-terminal/internal/model"
@@ -38,6 +39,8 @@ type Session struct {
 	closeOnce sync.Once
 	rows      int
 	cols      int
+	rxBytes   atomic.Int64
+	txBytes   atomic.Int64
 }
 
 // Connect 建立 Telnet 连接
@@ -68,6 +71,7 @@ func (s *Session) pump() {
 	for {
 		n, err := s.conn.Read(buf)
 		if n > 0 {
+			s.rxBytes.Add(int64(n))
 			chunk := append(leftover, buf[:n]...)
 			leftover = nil
 			data, rest := s.process(chunk)
@@ -184,7 +188,10 @@ func (s *Session) Send(data string) error {
 	if s.closed {
 		return errors.New("会话已关闭")
 	}
-	_, err := s.conn.Write([]byte(data))
+	n, err := s.conn.Write([]byte(data))
+	if n > 0 {
+		s.txBytes.Add(int64(n))
+	}
 	return err
 }
 
@@ -208,6 +215,19 @@ func (s *Session) Output() <-chan model.OutputMsg { return s.output }
 
 // Done 返回会话结束信号
 func (s *Session) Done() <-chan error { return s.done }
+
+// KeepAlive Telnet 无保活机制
+func (s *Session) KeepAlive() (int64, error) {
+	return 0, errors.New("Telnet 不支持保活")
+}
+
+// Metrics 返回会话实时指标
+func (s *Session) Metrics() model.Metrics {
+	return model.Metrics{
+		BytesIn:  s.rxBytes.Load(),
+		BytesOut: s.txBytes.Load(),
+	}
+}
 
 // Close 关闭连接 (幂等)
 func (s *Session) Close() {

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -34,6 +35,9 @@ type Session struct {
 	done       chan error
 	stop       chan struct{} // keepalive 停止信号
 	closeOnce  sync.Once
+	rxBytes    atomic.Int64
+	txBytes    atomic.Int64
+	keepAliveMs atomic.Int64
 }
 
 // Connect 建立连接、认证并打开远程 PTY shell; 对瞬时错误自动重试一次
@@ -212,9 +216,11 @@ func (s *Session) keepAlive() {
 		case <-s.stop:
 			return
 		case <-ticker.C:
+			t0 := time.Now()
 			if _, _, err := s.client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
 				return
 			}
+			s.keepAliveMs.Store(time.Since(t0).Milliseconds())
 		}
 	}
 }
@@ -225,6 +231,7 @@ func (s *Session) pump(r io.Reader) {
 	for {
 		n, err := r.Read(buf)
 		if n > 0 {
+			s.rxBytes.Add(int64(n))
 			s.output <- model.OutputMsg{Data: string(buf[:n])}
 		}
 		if err != nil {
@@ -239,6 +246,32 @@ func (s *Session) Output() <-chan model.OutputMsg { return s.output }
 // Done 返回会话结束信号 (阻塞到退出)
 func (s *Session) Done() <-chan error { return s.done }
 
+// KeepAlive 手动发送保活请求, 返回 RTT 毫秒
+func (s *Session) KeepAlive() (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return 0, errors.New("会话已关闭")
+	}
+	t0 := time.Now()
+	_, _, err := s.client.SendRequest("keepalive@openssh.com", true, nil)
+	if err != nil {
+		return 0, err
+	}
+	ms := time.Since(t0).Milliseconds()
+	s.keepAliveMs.Store(ms)
+	return ms, nil
+}
+
+// Metrics 返回会话实时指标
+func (s *Session) Metrics() model.Metrics {
+	return model.Metrics{
+		BytesIn:     s.rxBytes.Load(),
+		BytesOut:    s.txBytes.Load(),
+		KeepAliveMs: s.keepAliveMs.Load(),
+	}
+}
+
 // Send 发送终端输入
 func (s *Session) Send(data string) error {
 	s.mu.Lock()
@@ -246,7 +279,10 @@ func (s *Session) Send(data string) error {
 	if s.closed {
 		return errors.New("会话已关闭")
 	}
-	_, err := s.stdin.Write([]byte(data))
+	n, err := s.stdin.Write([]byte(data))
+	if n > 0 {
+		s.txBytes.Add(int64(n))
+	}
 	return err
 }
 

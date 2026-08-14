@@ -5,6 +5,7 @@ import { EventsOn } from '../wailsjs/runtime/runtime';
 import ConnectForm from './ConnectForm';
 import Workspace from './Workspace';
 import HomeView from './HomeView';
+import type { ThemeName } from './TerminalView';
 import './App.css';
 
 interface OpenSession {
@@ -27,6 +28,12 @@ function App() {
     const [historyList, setHistoryList] = useState<model.HistoryEntry[]>([]);
     const [historyContent, setHistoryContent] = useState<string | null>(null);
     const [historyErr, setHistoryErr] = useState('');
+    const [theme, setTheme] = useState<ThemeName>(() => (localStorage.getItem('theme') as ThemeName) || 'dark');
+
+    useEffect(() => {
+        localStorage.setItem('theme', theme);
+        document.body.classList.toggle('theme-light', theme === 'light');
+    }, [theme]);
 
     // 会话意外结束 (ssh-exit) 时自动移除标签; EventsOn 返回注销函数
     useEffect(() => {
@@ -77,6 +84,9 @@ function App() {
                 <button className="btn-hist" onClick={openHistory}>
                     🕘 历史
                 </button>
+                <button className="btn-hist" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>
+                    🌓 主题
+                </button>
                 {openSessions.map((s) => (
                     <div
                         key={s.id}
@@ -100,7 +110,7 @@ function App() {
             <div className="session-body">
                 {openSessions.map((s) => (
                     <div key={s.id} className={`session-pane ${s.id === activeId ? '' : 'hidden'}`}>
-                        <Workspace sessionId={s.id} active={s.id === activeId} onClose={() => closeSession(s.id)} />
+                        <Workspace sessionId={s.id} active={s.id === activeId} theme={theme} onClose={() => closeSession(s.id)} />
                     </div>
                 ))}
                 {openSessions.length === 0 && (

@@ -181,6 +181,28 @@ func (a *App) SshClose(id uint64) {
 	}
 }
 
+// GetSessionMetrics 会话实时指标 (前端状态栏轮询)
+func (a *App) GetSessionMetrics(id uint64) (model.Metrics, error) {
+	a.mu.Lock()
+	sess, ok := a.sessions[id]
+	a.mu.Unlock()
+	if !ok {
+		return model.Metrics{}, errors.New("会话不存在")
+	}
+	return sess.Metrics(), nil
+}
+
+// SshKeepAlive 手动保活, 返回 RTT 毫秒
+func (a *App) SshKeepAlive(id uint64) (int64, error) {
+	a.mu.Lock()
+	sess, ok := a.sessions[id]
+	a.mu.Unlock()
+	if !ok {
+		return 0, errors.New("会话不存在")
+	}
+	return sess.KeepAlive()
+}
+
 // ---------- SFTP 远程文件 ----------
 
 // SftpPwd 远程当前目录
