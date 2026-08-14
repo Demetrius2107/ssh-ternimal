@@ -69,6 +69,14 @@ func Connect(cfg model.SshConfig) (*Session, error) {
 	}
 	if cfg.Password != "" {
 		methods = append(methods, ssh.Password(cfg.Password))
+		// 部分服务器 (含堡垒机) 只提供 keyboard-interactive, 用同一密码应答
+		methods = append(methods, ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) ([]string, error) {
+			answers := make([]string, len(questions))
+			for i := range answers {
+				answers[i] = cfg.Password
+			}
+			return answers, nil
+		}))
 	}
 	if len(methods) == 0 {
 		return nil, errors.New("请提供密码或私钥")
@@ -81,10 +89,19 @@ func Connect(cfg model.SshConfig) (*Session, error) {
 		Timeout:         15 * time.Second,
 	}
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
-	client, err := ssh.Dial("tcp", addr, clientCfg)
+	// 手动拨号 + 全程 deadline: ClientConfig.Timeout 只覆盖 TCP 拨号,
+	// 握手/认证/PTY/Shell 无超时会无限卡顿 (服务器半开连接), 统一限制 30s
+	conn, err := net.DialTimeout("tcp", addr, 15*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("连接失败: %v", err)
 	}
+	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, clientCfg)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("连接超时或认证失败: %v", err)
+	}
+	client := ssh.NewClient(sshConn, chans, reqs)
 
 	sess, err := client.NewSession()
 	if err != nil {
@@ -119,6 +136,8 @@ func Connect(cfg model.SshConfig) (*Session, error) {
 		client.Close()
 		return nil, fmt.Errorf("启动 shell 失败: %v", err)
 	}
+	// shell 已启动, 清除 deadline, 否则 30s 后终端会被强制切断
+	_ = conn.SetDeadline(time.Time{})
 
 	s := &Session{
 		client:  client,

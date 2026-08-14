@@ -75,16 +75,13 @@ function App() {
                 passphrase,
             });
             const id = await SshConnect(cfg);
+            setSessionId(id); // 先切换终端视图, 保存会话后台执行不阻塞 UI
             if (saveSession) {
                 const name = sessionName.trim() || `${username}@${host}`;
-                try {
-                    await SaveSession(name, host, port, username, password);
-                    refreshSessions();
-                } catch (e: any) {
-                    console.warn('保存会话失败', e);
-                }
+                SaveSession(name, host, port, username, password)
+                    .then(() => refreshSessions())
+                    .catch((e: any) => console.warn('保存会话失败', e));
             }
-            setSessionId(id);
         } catch (e: any) {
             setError(e?.message ?? String(e));
         } finally {
@@ -103,11 +100,12 @@ function App() {
                         文件
                     </button>
                 </div>
-                {activeTab === 'terminal' ? (
+                <div className={`tab-pane ${activeTab === 'terminal' ? '' : 'hidden'}`}>
                     <TerminalView sessionId={sessionId} onClose={() => setSessionId(null)} />
-                ) : (
+                </div>
+                <div className={`tab-pane ${activeTab === 'files' ? '' : 'hidden'}`}>
                     <FilePanel sessionId={sessionId} />
-                )}
+                </div>
             </div>
         );
     }
