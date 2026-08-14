@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,8 +41,28 @@ type Session struct {
 	closeOnce  sync.Once
 }
 
-// Connect 建立连接、认证并打开远程 PTY shell
+// Connect 建立连接、认证并打开远程 PTY shell; 对瞬时错误自动重试一次
 func Connect(cfg model.SshConfig) (*Session, error) {
+	var lastErr error
+	for attempt := 1; attempt <= 2; attempt++ {
+		s, err := connectOnce(cfg)
+		if err == nil {
+			return s, nil
+		}
+		lastErr = err
+		if isAuthError(err) {
+			return nil, err // 认证失败 (密码/私钥错误) 不重试
+		}
+		logConnect("retry", fmt.Sprintf("attempt %d failed: %v", attempt, err))
+		if attempt < 2 {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+	return nil, lastErr
+}
+
+// connectOnce 单次连接: 拨号、握手、认证、PTY、shell
+func connectOnce(cfg model.SshConfig) (*Session, error) {
 	if cfg.Host == "" || cfg.Username == "" {
 		return nil, errors.New("host 和 username 不能为空")
 	}
@@ -91,16 +112,24 @@ func Connect(cfg model.SshConfig) (*Session, error) {
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 	// 手动拨号 + 全程 deadline: ClientConfig.Timeout 只覆盖 TCP 拨号,
 	// 握手/认证/PTY/Shell 无超时会无限卡顿 (服务器半开连接), 统一限制 30s
-	conn, err := net.DialTimeout("tcp", addr, 15*time.Second)
+	t0 := time.Now()
+	conn, err := net.DialTimeout("tcp", addr, 8*time.Second)
 	if err != nil {
+		logConnect("dial-fail", err.Error())
 		return nil, fmt.Errorf("连接失败: %v", err)
 	}
+	logConnect("dial", time.Since(t0).String())
 	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, clientCfg)
 	if err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("连接超时或认证失败: %v", err)
+		logConnect("handshake+auth-fail", err.Error())
+		if isAuthError(err) {
+			return nil, fmt.Errorf("认证失败: %v", err)
+		}
+		return nil, fmt.Errorf("连接失败(握手/超时): %v", err)
 	}
+	logConnect("handshake+auth", time.Since(t0).String())
 	client := ssh.NewClient(sshConn, chans, reqs)
 
 	sess, err := client.NewSession()
@@ -136,6 +165,7 @@ func Connect(cfg model.SshConfig) (*Session, error) {
 		client.Close()
 		return nil, fmt.Errorf("启动 shell 失败: %v", err)
 	}
+	logConnect("pty+shell", time.Since(t0).String())
 	// shell 已启动, 清除 deadline, 否则 30s 后终端会被强制切断
 	_ = conn.SetDeadline(time.Time{})
 
@@ -158,7 +188,24 @@ func Connect(cfg model.SshConfig) (*Session, error) {
 		s.done <- err
 		s.Close()
 	}()
+	logConnect("total", time.Since(t0).String())
 	return s, nil
+}
+
+// isAuthError 判断是否为认证失败 (密码/私钥错误), 此类错误不重试
+func isAuthError(err error) bool {
+	s := err.Error()
+	return strings.Contains(s, "unable to authenticate") || strings.Contains(s, "认证失败")
+}
+
+// logConnect 连接阶段计时/事件写入 %TEMP%/ssh-terminal-connect.log, 用于定位慢连接与偶发失败
+func logConnect(stage, detail string) {
+	f, err := os.OpenFile(filepath.Join(os.TempDir(), "ssh-terminal-connect.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s [%s] %s\n", time.Now().Format("2006-01-02 15:04:05.000"), stage, detail)
 }
 
 // keepAlive 每 30s 发送保活请求, 会话停止时退出
