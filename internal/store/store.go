@@ -79,9 +79,9 @@ func (s *Store) Save(sess model.StoredSession, password string) (string, error) 
 	return sess.ID, nil
 }
 
-// List 列出全部会话
+// List 列出全部会话 (空库返回空切片而非 nil, 避免 wails 序列化成 JS null)
 func (s *Store) List() ([]model.StoredSession, error) {
-	var out []model.StoredSession
+	out := []model.StoredSession{}
 	err := s.db.View(func(tx *bbolt.Tx) error {
 		return tx.Bucket([]byte(bucketName)).ForEach(func(k, v []byte) error {
 			var sess model.StoredSession

@@ -26,7 +26,7 @@ function App() {
 
     async function refreshSessions() {
         try {
-            setSessions(await ListSessions());
+            setSessions((await ListSessions()) ?? []);
         } catch (e) {
             /* 存储不可用时不打扰 */
         }
