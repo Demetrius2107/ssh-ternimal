@@ -1,0 +1,127 @@
+// Package store 会话持久化: bbolt 存配置, 系统凭据库 (Windows Credential Manager) 存密码
+package store
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/zalando/go-keyring"
+	"go.etcd.io/bbolt"
+
+	"ssh-terminal/internal/model"
+)
+
+const (
+	bucketName     = "sessions"
+	keyringService = "ssh-terminal"
+)
+
+// Store 会话存储
+type Store struct {
+	db *bbolt.DB
+}
+
+// Open 打开 (或创建) 会话库, 数据目录: %AppData%/ssh-terminal
+func Open() (*Store, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return nil, fmt.Errorf("获取配置目录失败: %v", err)
+	}
+	dir = filepath.Join(dir, "ssh-terminal")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
+	db, err := bbolt.Open(filepath.Join(dir, "sessions.db"), 0600, nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Update(func(tx *bbolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte(bucketName))
+		return err
+	}); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return &Store{db: db}, nil
+}
+
+// Close 关闭存储
+func (s *Store) Close() {
+	if s.db != nil {
+		s.db.Close()
+	}
+}
+
+// Save 保存会话; 密码非空时写入系统凭据库
+func (s *Store) Save(sess model.StoredSession, password string) (string, error) {
+	if sess.ID == "" {
+		sess.ID = newID()
+	}
+	data, err := json.Marshal(sess)
+	if err != nil {
+		return "", err
+	}
+	if err := s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(bucketName)).Put([]byte(sess.ID), data)
+	}); err != nil {
+		return "", err
+	}
+	if password != "" {
+		if err := keyring.Set(keyringService, sess.ID, password); err != nil {
+			return "", fmt.Errorf("保存密码到系统凭据库失败: %v", err)
+		}
+	}
+	return sess.ID, nil
+}
+
+// List 列出全部会话
+func (s *Store) List() ([]model.StoredSession, error) {
+	var out []model.StoredSession
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(bucketName)).ForEach(func(k, v []byte) error {
+			var sess model.StoredSession
+			if err := json.Unmarshal(v, &sess); err == nil {
+				out = append(out, sess)
+			}
+			return nil
+		})
+	})
+	return out, err
+}
+
+// Delete 删除会话配置及其密码
+func (s *Store) Delete(id string) error {
+	_ = keyring.Delete(keyringService, id)
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(bucketName)).Delete([]byte(id))
+	})
+}
+
+// Load 加载会话配置与密码
+func (s *Store) Load(id string) (model.StoredSession, string, error) {
+	var sess model.StoredSession
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		v := tx.Bucket([]byte(bucketName)).Get([]byte(id))
+		if v == nil {
+			return errors.New("会话不存在")
+		}
+		return json.Unmarshal(v, &sess)
+	})
+	if err != nil {
+		return sess, "", err
+	}
+	pw, _ := keyring.Get(keyringService, id)
+	return sess, pw, nil
+}
+
+// newID 生成 16 位十六进制会话 ID
+func newID() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}

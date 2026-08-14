@@ -96,3 +96,278 @@
     background: #1e1e1e;
     padding: 4px;
 }
+
+.session-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+
+.session-bar select {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background: #1e1e1e;
+    color: #eee;
+    font-size: 13px;
+}
+
+.session-bar button {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    background: #3a3a3d;
+    color: #ddd;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.session-bar button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.session-bar button:hover:not(:disabled) {
+    background: #4a4a4e;
+}
+
+.save-session {
+    flex-direction: row !important;
+    align-items: center;
+    gap: 8px !important;
+    color: #ccc !important;
+    cursor: pointer;
+    font-size: 13px !important;
+}
+
+/* ---------- 工作区标签页 ---------- */
+.workspace {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.tab-bar {
+    display: flex;
+    gap: 4px;
+    padding: 6px 10px 0;
+    background: #252526;
+}
+
+.tab {
+    padding: 6px 16px;
+    border: none;
+    border-radius: 4px 4px 0 0;
+    background: #2d2d30;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.tab.active {
+    background: #1e1e1e;
+    color: #fff;
+}
+
+/* ---------- 文件面板 ---------- */
+.file-panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: #1e1e1e;
+    color: #ccc;
+}
+
+.file-error {
+    margin: 8px;
+}
+
+.file-panes {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+}
+
+.pane {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #333;
+}
+
+.pane:last-child {
+    border-right: none;
+}
+
+.pane-header {
+    display: flex;
+    gap: 4px;
+    padding: 6px;
+    background: #2d2d30;
+}
+
+.pane-header button {
+    padding: 4px 10px;
+    background: #3a3a3d;
+    color: #ddd;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.pane-header input {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 8px;
+    background: #1e1e1e;
+    color: #eee;
+    border: 1px solid #555;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.pane-actions {
+    display: flex;
+    gap: 4px;
+    padding: 4px 6px;
+    background: #252526;
+}
+
+.pane-actions button {
+    padding: 4px 10px;
+    background: #3a3a3d;
+    color: #ddd;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.pane-actions button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.file-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    font-size: 12px;
+}
+
+.file-row {
+    display: flex;
+    gap: 8px;
+    padding: 3px 8px;
+    cursor: pointer;
+}
+
+.file-row:hover {
+    background: #2a2d2e;
+}
+
+.file-row.selected {
+    background: #094771;
+}
+
+.f-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.f-size {
+    width: 80px;
+    text-align: right;
+    color: #888;
+}
+
+.f-time {
+    width: 110px;
+    color: #888;
+}
+
+/* ---------- 传输动作栏 ---------- */
+.transfer-actions {
+    display: flex;
+    gap: 6px;
+    padding: 6px 8px;
+    background: #2d2d30;
+    border-top: 1px solid #333;
+}
+
+.transfer-actions button {
+    padding: 6px 14px;
+    background: #0e639c;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.transfer-actions button:disabled {
+    background: #555;
+    cursor: not-allowed;
+}
+
+/* ---------- 传输队列 ---------- */
+.transfers {
+    max-height: 160px;
+    overflow-y: auto;
+    background: #252526;
+    border-top: 1px solid #333;
+}
+
+.transfer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+.t-status {
+    width: 16px;
+}
+
+.t-done {
+    color: #4ec94e;
+}
+
+.t-error {
+    color: #ff6b6b;
+}
+
+.t-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.t-pct {
+    width: 220px;
+    text-align: right;
+    color: #aaa;
+}
+
+.t-bar {
+    width: 120px;
+    height: 8px;
+    background: #3a3a3d;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.t-bar-fill {
+    height: 100%;
+    background: #0e639c;
+    transition: width 0.2s;
+}
