@@ -21,11 +21,6 @@ import (
 	"ssh-terminal/internal/model"
 )
 
-// OutputMsg 终端输出消息
-type OutputMsg struct {
-	Data string
-}
-
 // Session 单个 SSH 会话
 type Session struct {
 	client     *ssh.Client
@@ -35,7 +30,7 @@ type Session struct {
 	sftpMu     sync.Mutex
 	mu         sync.Mutex
 	closed     bool
-	output     chan OutputMsg
+	output     chan model.OutputMsg
 	done       chan error
 	stop       chan struct{} // keepalive 停止信号
 	closeOnce  sync.Once
@@ -173,7 +168,7 @@ func connectOnce(cfg model.SshConfig) (*Session, error) {
 		client:  client,
 		session: sess,
 		stdin:   stdin,
-		output:  make(chan OutputMsg, 64),
+		output:  make(chan model.OutputMsg, 64),
 		done:    make(chan error, 1),
 		stop:    make(chan struct{}),
 	}
@@ -230,7 +225,7 @@ func (s *Session) pump(r io.Reader) {
 	for {
 		n, err := r.Read(buf)
 		if n > 0 {
-			s.output <- OutputMsg{Data: string(buf[:n])}
+			s.output <- model.OutputMsg{Data: string(buf[:n])}
 		}
 		if err != nil {
 			return
@@ -239,7 +234,7 @@ func (s *Session) pump(r io.Reader) {
 }
 
 // Output 返回终端输出流 (只读)
-func (s *Session) Output() <-chan OutputMsg { return s.output }
+func (s *Session) Output() <-chan model.OutputMsg { return s.output }
 
 // Done 返回会话结束信号 (阻塞到退出)
 func (s *Session) Done() <-chan error { return s.done }

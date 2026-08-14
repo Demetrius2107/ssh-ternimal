@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-    SshConnect,
+    Connect,
     SaveSession,
     ListSessions,
     DeleteSession,
@@ -23,6 +23,7 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
     const [authMethod, setAuthMethod] = useState<'password' | 'key'>('password');
     const [keyPath, setKeyPath] = useState('');
     const [passphrase, setPassphrase] = useState('');
+    const [protocol, setProtocol] = useState<'ssh' | 'telnet'>('ssh');
     const [connecting, setConnecting] = useState(false);
     const [error, setError] = useState('');
 
@@ -74,6 +75,7 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
         setError('');
         try {
             const cfg = new model.SshConfig({
+                protocol,
                 host,
                 port,
                 username,
@@ -82,8 +84,8 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                 privateKeyPath: authMethod === 'key' ? keyPath : '',
                 passphrase,
             });
-            const id = await SshConnect(cfg);
-            const label = `${username}@${host}:${port}`;
+            const id = await Connect(cfg);
+            const label = protocol === 'telnet' ? `${host}:${port}` : `${username}@${host}:${port}`;
             onConnected(id, label);
             if (saveSession) {
                 const name = sessionName.trim() || `${username}@${host}`;
@@ -100,7 +102,7 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
 
     return (
         <div className="connect-panel">
-            <h1>新建 SSH 连接</h1>
+            <h1>新建连接</h1>
 
             <div className="session-bar">
                 <select value={selectedSession} onChange={(e) => setSelectedSession(e.target.value)}>
@@ -126,6 +128,21 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                 }}
             >
                 <label>
+                    连接类型
+                    <select
+                        value={protocol}
+                        onChange={(e) => {
+                            const p = e.target.value as 'ssh' | 'telnet';
+                            setProtocol(p);
+                            if (p === 'telnet' && port === 22) setPort(23);
+                            if (p === 'ssh' && port === 23) setPort(22);
+                        }}
+                    >
+                        <option value="ssh">SSH</option>
+                        <option value="telnet">Telnet</option>
+                    </select>
+                </label>
+                <label>
                     主机
                     <input
                         value={host}
@@ -145,66 +162,70 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                         onChange={(e) => setPort(Number(e.target.value))}
                     />
                 </label>
-                <label>
-                    用户名
-                    <input value={username} onChange={(e) => setUsername(e.target.value)} required />
-                </label>
-                <label>
-                    认证方式
-                    <select value={authMethod} onChange={(e) => setAuthMethod(e.target.value as 'password' | 'key')}>
-                        <option value="password">密码</option>
-                        <option value="key">私钥</option>
-                    </select>
-                </label>
-                {authMethod === 'password' ? (
-                    <label>
-                        密码
-                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-                    </label>
-                ) : (
+                {protocol === 'ssh' && (
                     <>
                         <label>
-                            私钥文件
-                            <div className="key-row">
-                                <input
-                                    value={keyPath}
-                                    onChange={(e) => setKeyPath(e.target.value)}
-                                    placeholder="C:\Users\xxx\.ssh\id_rsa"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={async () => {
-                                        const p = await PickFile();
-                                        if (p) setKeyPath(p);
-                                    }}
-                                >
-                                    选择
-                                </button>
-                            </div>
+                            用户名
+                            <input value={username} onChange={(e) => setUsername(e.target.value)} required />
                         </label>
                         <label>
-                            私钥口令（可选）
-                            <input
-                                type="password"
-                                value={passphrase}
-                                onChange={(e) => setPassphrase(e.target.value)}
-                            />
+                            认证方式
+                            <select value={authMethod} onChange={(e) => setAuthMethod(e.target.value as 'password' | 'key')}>
+                                <option value="password">密码</option>
+                                <option value="key">私钥</option>
+                            </select>
                         </label>
+                        {authMethod === 'password' ? (
+                            <label>
+                                密码
+                                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                            </label>
+                        ) : (
+                            <>
+                                <label>
+                                    私钥文件
+                                    <div className="key-row">
+                                        <input
+                                            value={keyPath}
+                                            onChange={(e) => setKeyPath(e.target.value)}
+                                            placeholder="C:\Users\xxx\.ssh\id_rsa"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                const p = await PickFile();
+                                                if (p) setKeyPath(p);
+                                            }}
+                                        >
+                                            选择
+                                        </button>
+                                    </div>
+                                </label>
+                                <label>
+                                    私钥口令（可选）
+                                    <input
+                                        type="password"
+                                        value={passphrase}
+                                        onChange={(e) => setPassphrase(e.target.value)}
+                                    />
+                                </label>
+                            </>
+                        )}
+                        <label className="save-session">
+                            <input type="checkbox" checked={saveSession} onChange={(e) => setSaveSession(e.target.checked)} />
+                            连接成功后保存到会话库
+                        </label>
+                        {saveSession && (
+                            <label>
+                                会话名
+                                <input
+                                    value={sessionName}
+                                    onChange={(e) => setSessionName(e.target.value)}
+                                    placeholder="留空则用 user@host"
+                                />
+                            </label>
+                        )}
                     </>
-                )}
-                <label className="save-session">
-                    <input type="checkbox" checked={saveSession} onChange={(e) => setSaveSession(e.target.checked)} />
-                    连接成功后保存到会话库
-                </label>
-                {saveSession && (
-                    <label>
-                        会话名
-                        <input
-                            value={sessionName}
-                            onChange={(e) => setSessionName(e.target.value)}
-                            placeholder="留空则用 user@host"
-                        />
-                    </label>
                 )}
                 <button type="submit" disabled={connecting}>
                     {connecting ? '连接中...' : '连接'}

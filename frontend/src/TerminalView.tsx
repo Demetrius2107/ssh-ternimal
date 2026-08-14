@@ -70,8 +70,11 @@ export default function TerminalView({ sessionId, active }: { sessionId: number;
         });
 
         const ro = new ResizeObserver(() => {
-            fit.fit();
-            SshResize(sessionId, term.rows, term.cols);
+            // rAF 防抖: 避免 fit() 在 RO 回调里改尺寸触发 loop 通知
+            requestAnimationFrame(() => {
+                fit.fit();
+                SshResize(sessionId, term.rows, term.cols);
+            });
         });
         ro.observe(containerRef.current!);
 

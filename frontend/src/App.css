@@ -455,6 +455,20 @@
     font-size: 13px;
 }
 
+.btn-hist {
+    padding: 4px 12px;
+    border: none;
+    border-radius: 4px;
+    background: #3a3a3d;
+    color: #ddd;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.btn-hist:hover {
+    background: #4a4a4e;
+}
+
 .session-tab {
     display: flex;
     align-items: center;
@@ -598,4 +612,70 @@
     border-radius: 4px;
     cursor: pointer;
     font-size: 12px;
+}
+
+/* ---------- 历史记录 ---------- */
+.history-modal {
+    width: 680px;
+    max-width: 92vw;
+}
+
+.modal-title {
+    margin: 0 0 12px;
+    font-size: 16px;
+    color: #eee;
+}
+
+.hist-list {
+    max-height: 52vh;
+    overflow-y: auto;
+}
+
+.hist-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.hist-item:hover {
+    background: #3a3a3d;
+}
+
+.hi-name {
+    color: #ddd;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hi-meta {
+    color: #888;
+    flex-shrink: 0;
+}
+
+.hist-empty {
+    padding: 24px;
+    text-align: center;
+    color: #666;
+}
+
+.hist-viewer {
+    max-height: 56vh;
+    overflow-y: auto;
+    background: #1e1e1e;
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.hist-content {
+    margin: 0;
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    color: #ccc;
+    white-space: pre-wrap;
+    word-break: break-all;
 }

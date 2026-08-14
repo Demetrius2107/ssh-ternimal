@@ -14,6 +14,8 @@ function showFatalError(title: string, detail: string) {
 }
 
 window.addEventListener('error', (e) => {
+    // ResizeObserver loop 是浏览器良性警告, 忽略避免误报
+    if (e.message && e.message.includes('ResizeObserver loop')) return;
     showFatalError('JS 运行时错误', `${e.message}\n${e.filename}:${e.lineno}:${e.colno}`)
 })
 window.addEventListener('unhandledrejection', (e) => {

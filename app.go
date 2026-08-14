@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -11,6 +12,7 @@ import (
 	"ssh-terminal/internal/model"
 	"ssh-terminal/internal/store"
 	"ssh-terminal/internal/sshcore"
+	"ssh-terminal/internal/telnetcore"
 	"ssh-terminal/internal/transfer"
 )
 
@@ -29,7 +31,8 @@ type SshExit struct {
 // App 应用结构 (wails 绑定层, 方法转发到 internal 包)
 type App struct {
 	ctx      context.Context
-	sessions map[uint64]*sshcore.Session
+	sessions map[uint64]model.TermSession
+	history  map[uint64]*historyFile
 	nextID   uint64
 	mu       sync.Mutex
 
@@ -40,7 +43,8 @@ type App struct {
 // NewApp 创建 App 实例
 func NewApp() *App {
 	return &App{
-		sessions: make(map[uint64]*sshcore.Session),
+		sessions: make(map[uint64]model.TermSession),
+		history:  make(map[uint64]*historyFile),
 		engine:   transfer.NewEngine(),
 	}
 }
@@ -59,8 +63,8 @@ func (a *App) startup(ctx context.Context) {
 	})
 }
 
-// getSession 按 ID 取会话
-func (a *App) getSession(id uint64) (*sshcore.Session, error) {
+// getSession 按 ID 取会话 (通用终端接口)
+func (a *App) getSession(id uint64) (model.TermSession, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if s, ok := a.sessions[id]; ok {
@@ -69,11 +73,35 @@ func (a *App) getSession(id uint64) (*sshcore.Session, error) {
 	return nil, errors.New("会话不存在")
 }
 
+// getSSH 取 SSH 会话 (SFTP 等仅 SSH 支持的操作)
+func (a *App) getSSH(id uint64) (*sshcore.Session, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if s, ok := a.sessions[id]; ok {
+		if ssh, ok := s.(*sshcore.Session); ok {
+			return ssh, nil
+		}
+		return nil, errors.New("该连接不支持此操作 (仅 SSH)")
+	}
+	return nil, errors.New("会话不存在")
+}
+
 // ---------- SSH 终端 ----------
 
-// SshConnect 建立 SSH 会话, 返回会话 ID
-func (a *App) SshConnect(cfg model.SshConfig) (uint64, error) {
-	sess, err := sshcore.Connect(cfg)
+// Connect 建立终端会话 (SSH/Telnet), 返回会话 ID
+func (a *App) Connect(cfg model.SshConfig) (uint64, error) {
+	proto := cfg.Protocol
+	if proto == "" {
+		proto = "ssh"
+	}
+	var sess model.TermSession
+	var err error
+	switch proto {
+	case "telnet":
+		sess, err = telnetcore.Connect(cfg.Host, cfg.Port)
+	default:
+		sess, err = sshcore.Connect(cfg)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -83,9 +111,23 @@ func (a *App) SshConnect(cfg model.SshConfig) (uint64, error) {
 	a.sessions[id] = sess
 	a.mu.Unlock()
 
+	// 历史记录持久化 (会话输出实时落盘)
+	hf, herr := openHistory(fmt.Sprintf("%s:%s:%d", proto, cfg.Host, cfg.Port))
+	if herr != nil {
+		println("历史记录不可用:", herr.Error())
+	}
+	if hf != nil {
+		a.mu.Lock()
+		a.history[id] = hf
+		a.mu.Unlock()
+	}
+
 	go func() {
 		for msg := range sess.Output() {
 			runtime.EventsEmit(a.ctx, "ssh-output", SshOutput{SessionID: id, Data: msg.Data})
+			if hf != nil {
+				hf.write(msg.Data)
+			}
 		}
 	}()
 	go func() {
@@ -97,6 +139,10 @@ func (a *App) SshConnect(cfg model.SshConfig) (uint64, error) {
 		runtime.EventsEmit(a.ctx, "ssh-exit", SshExit{SessionID: id, Error: msg})
 		a.mu.Lock()
 		delete(a.sessions, id)
+		if hf != nil {
+			hf.close()
+			delete(a.history, id)
+		}
 		a.mu.Unlock()
 	}()
 	return id, nil
@@ -125,6 +171,10 @@ func (a *App) SshClose(id uint64) {
 	a.mu.Lock()
 	sess, ok := a.sessions[id]
 	delete(a.sessions, id)
+	if hf, ok2 := a.history[id]; ok2 {
+		hf.close()
+		delete(a.history, id)
+	}
 	a.mu.Unlock()
 	if ok {
 		sess.Close()
@@ -135,7 +185,7 @@ func (a *App) SshClose(id uint64) {
 
 // SftpPwd 远程当前目录
 func (a *App) SftpPwd(id uint64) (string, error) {
-	sess, err := a.getSession(id)
+	sess, err := a.getSSH(id)
 	if err != nil {
 		return "", err
 	}
@@ -144,7 +194,7 @@ func (a *App) SftpPwd(id uint64) (string, error) {
 
 // SftpListDir 列出远程目录
 func (a *App) SftpListDir(id uint64, dir string) ([]model.FileEntry, error) {
-	sess, err := a.getSession(id)
+	sess, err := a.getSSH(id)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +203,7 @@ func (a *App) SftpListDir(id uint64, dir string) ([]model.FileEntry, error) {
 
 // SftpMkdir 远程新建目录
 func (a *App) SftpMkdir(id uint64, dir string) error {
-	sess, err := a.getSession(id)
+	sess, err := a.getSSH(id)
 	if err != nil {
 		return err
 	}
@@ -162,7 +212,7 @@ func (a *App) SftpMkdir(id uint64, dir string) error {
 
 // SftpDelete 远程删除
 func (a *App) SftpDelete(id uint64, p string) error {
-	sess, err := a.getSession(id)
+	sess, err := a.getSSH(id)
 	if err != nil {
 		return err
 	}
@@ -171,7 +221,7 @@ func (a *App) SftpDelete(id uint64, p string) error {
 
 // SftpRename 远程重命名
 func (a *App) SftpRename(id uint64, oldP, newP string) error {
-	sess, err := a.getSession(id)
+	sess, err := a.getSSH(id)
 	if err != nil {
 		return err
 	}
@@ -180,7 +230,7 @@ func (a *App) SftpRename(id uint64, oldP, newP string) error {
 
 // SftpChmod 远程修改权限
 func (a *App) SftpChmod(id uint64, p string, mode uint32) error {
-	sess, err := a.getSession(id)
+	sess, err := a.getSSH(id)
 	if err != nil {
 		return err
 	}
@@ -189,7 +239,7 @@ func (a *App) SftpChmod(id uint64, p string, mode uint32) error {
 
 // SftpUpload 异步上传 (文件或目录), 返回任务 ID; conflict: overwrite/skip/rename
 func (a *App) SftpUpload(id uint64, localPath, remotePath, conflict string) (uint64, error) {
-	sess, err := a.getSession(id)
+	sess, err := a.getSSH(id)
 	if err != nil {
 		return 0, err
 	}
@@ -198,7 +248,7 @@ func (a *App) SftpUpload(id uint64, localPath, remotePath, conflict string) (uin
 
 // SftpDownload 异步下载 (文件或目录), 返回任务 ID; conflict: overwrite/skip/rename
 func (a *App) SftpDownload(id uint64, remotePath, localPath, conflict string) (uint64, error) {
-	sess, err := a.getSession(id)
+	sess, err := a.getSSH(id)
 	if err != nil {
 		return 0, err
 	}

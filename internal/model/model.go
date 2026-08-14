@@ -1,8 +1,9 @@
 // Package model 定义跨包共享的数据结构 (DTO)
 package model
 
-// SshConfig SSH 连接配置
+// SshConfig 连接配置
 type SshConfig struct {
+	Protocol       string `json:"protocol"` // ssh / telnet
 	Host           string `json:"host"`
 	Port           int    `json:"port"`
 	Username       string `json:"username"`
@@ -45,4 +46,12 @@ type StoredSession struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	Username string `json:"username"`
+}
+
+// HistoryEntry 历史记录条目
+type HistoryEntry struct {
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	Size    int64  `json:"size"`
+	ModTime string `json:"modTime"`
 }
