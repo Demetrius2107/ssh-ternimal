@@ -35,9 +35,10 @@ type Session struct {
 	done       chan error
 	stop       chan struct{} // keepalive 停止信号
 	closeOnce  sync.Once
-	rxBytes    atomic.Int64
-	txBytes    atomic.Int64
+	rxBytes     atomic.Int64
+	txBytes     atomic.Int64
 	keepAliveMs atomic.Int64
+	jumpClient  *ssh.Client // 跳板机连接 (需保持存活, 会话关闭时一并关闭)
 }
 
 // Connect 建立连接、认证并打开远程 PTY shell; 对瞬时错误自动重试一次
@@ -60,40 +61,42 @@ func Connect(cfg model.SshConfig) (*Session, error) {
 	return nil, lastErr
 }
 
-// connectOnce 单次连接: 拨号、握手、认证、PTY、shell
-func connectOnce(cfg model.SshConfig) (*Session, error) {
-	if cfg.Host == "" || cfg.Username == "" {
-		return nil, errors.New("host 和 username 不能为空")
-	}
-
+// buildAuthMethods 构建认证方法 (密码/私钥/keyboard-interactive 含 OTP 应答)
+func buildAuthMethods(user, password, privateKey, privateKeyPath, passphrase, otp string) ([]ssh.AuthMethod, error) {
 	var methods []ssh.AuthMethod
-	if cfg.PrivateKeyPath != "" {
-		pemBytes, err := os.ReadFile(cfg.PrivateKeyPath)
+	if privateKeyPath != "" {
+		pemBytes, err := os.ReadFile(privateKeyPath)
 		if err != nil {
 			return nil, fmt.Errorf("读取私钥文件失败: %v", err)
 		}
-		cfg.PrivateKey = string(pemBytes)
+		privateKey = string(pemBytes)
 	}
-	if cfg.PrivateKey != "" {
+	if privateKey != "" {
 		var signer ssh.Signer
 		var err error
-		if cfg.Passphrase != "" {
-			signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(cfg.PrivateKey), []byte(cfg.Passphrase))
+		if passphrase != "" {
+			signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(privateKey), []byte(passphrase))
 		} else {
-			signer, err = ssh.ParsePrivateKey([]byte(cfg.PrivateKey))
+			signer, err = ssh.ParsePrivateKey([]byte(privateKey))
 		}
 		if err != nil {
 			return nil, fmt.Errorf("解析私钥失败: %v", err)
 		}
 		methods = append(methods, ssh.PublicKeys(signer))
 	}
-	if cfg.Password != "" {
-		methods = append(methods, ssh.Password(cfg.Password))
-		// 部分服务器 (含堡垒机) 只提供 keyboard-interactive, 用同一密码应答
-		methods = append(methods, ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) ([]string, error) {
+	if password != "" || otp != "" {
+		methods = append(methods, ssh.Password(password))
+		// 部分服务器 (含堡垒机) 只提供 keyboard-interactive; OTP/验证码类问题用 OTP 应答
+		methods = append(methods, ssh.KeyboardInteractive(func(u, instruction string, questions []string, echos []bool) ([]string, error) {
 			answers := make([]string, len(questions))
-			for i := range answers {
-				answers[i] = cfg.Password
+			for i, q := range questions {
+				low := strings.ToLower(q)
+				if otp != "" && (strings.Contains(low, "code") || strings.Contains(low, "otp") ||
+					strings.Contains(low, "token") || strings.Contains(low, "验证")) {
+					answers[i] = otp
+				} else {
+					answers[i] = password
+				}
 			}
 			return answers, nil
 		}))
@@ -101,7 +104,35 @@ func connectOnce(cfg model.SshConfig) (*Session, error) {
 	if len(methods) == 0 {
 		return nil, errors.New("请提供密码或私钥")
 	}
+	return methods, nil
+}
 
+// dialClient 拨号 + 握手 + 认证 (带 30s 全程 deadline), 返回客户端与底层连接
+func dialClient(addr string, cfg *ssh.ClientConfig) (*ssh.Client, net.Conn, error) {
+	conn, err := net.DialTimeout("tcp", addr, 8*time.Second)
+	if err != nil {
+		return nil, nil, err
+	}
+	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)
+	if err != nil {
+		conn.Close()
+		return nil, nil, err
+	}
+	return ssh.NewClient(sshConn, chans, reqs), conn, nil
+}
+
+// connectOnce 单次连接: 拨号、握手、认证、PTY、shell
+func connectOnce(cfg model.SshConfig) (*Session, error) {
+	if cfg.Host == "" || cfg.Username == "" {
+		return nil, errors.New("host 和 username 不能为空")
+	}
+
+	// 目标端认证 (密码/私钥/OTP)
+	methods, err := buildAuthMethods(cfg.Username, cfg.Password, cfg.PrivateKey, cfg.PrivateKeyPath, cfg.Passphrase, cfg.OTP)
+	if err != nil {
+		return nil, err
+	}
 	clientCfg := &ssh.ClientConfig{
 		User:            cfg.Username,
 		Auth:            methods,
@@ -109,27 +140,65 @@ func connectOnce(cfg model.SshConfig) (*Session, error) {
 		Timeout:         15 * time.Second,
 	}
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
-	// 手动拨号 + 全程 deadline: ClientConfig.Timeout 只覆盖 TCP 拨号,
-	// 握手/认证/PTY/Shell 无超时会无限卡顿 (服务器半开连接), 统一限制 30s
 	t0 := time.Now()
-	conn, err := net.DialTimeout("tcp", addr, 8*time.Second)
-	if err != nil {
-		logConnect("dial-fail", err.Error())
-		return nil, fmt.Errorf("连接失败: %v", err)
-	}
-	logConnect("dial", time.Since(t0).String())
-	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
-	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, clientCfg)
-	if err != nil {
-		conn.Close()
-		logConnect("handshake+auth-fail", err.Error())
-		if isAuthError(err) {
-			return nil, fmt.Errorf("认证失败: %v", err)
+
+	var client *ssh.Client
+	var conn net.Conn
+	var jumpClient *ssh.Client
+	if cfg.JumpHost != "" {
+		// 跳板机: 先连跳板, 再经 direct-tcpip 通道连目标
+		jumpMethods, jerr := buildAuthMethods(cfg.JumpUser, cfg.JumpPassword, "", cfg.JumpPrivateKeyPath, cfg.JumpPassphrase, "")
+		if jerr != nil {
+			return nil, jerr
 		}
-		return nil, fmt.Errorf("连接失败(握手/超时): %v", err)
+		jumpCfg := &ssh.ClientConfig{
+			User:            cfg.JumpUser,
+			Auth:            jumpMethods,
+			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+			Timeout:         15 * time.Second,
+		}
+		jumpAddr := net.JoinHostPort(cfg.JumpHost, strconv.Itoa(cfg.JumpPort))
+		var jconn net.Conn
+		jumpClient, jconn, jerr = dialClient(jumpAddr, jumpCfg)
+		if jerr != nil {
+			logConnect("jump-fail", jerr.Error())
+			return nil, fmt.Errorf("跳板机连接失败: %v", jerr)
+		}
+		_ = jconn.SetDeadline(time.Time{}) // 跳板握手完成, 清除 deadline
+		conn, jerr = jumpClient.Dial("tcp", addr)
+		if jerr != nil {
+			jumpClient.Close()
+			return nil, fmt.Errorf("经跳板连接目标失败: %v", jerr)
+		}
+		sshConn, chans, reqs, herr := ssh.NewClientConn(conn, addr, clientCfg)
+		if herr != nil {
+			jumpClient.Close()
+			conn.Close()
+			logConnect("handshake+auth-fail", herr.Error())
+			return nil, fmt.Errorf("经跳板握手失败: %v", herr)
+		}
+		client = ssh.NewClient(sshConn, chans, reqs)
+	} else {
+		// 直连: 手动拨号 + 全程 deadline (握手/认证/PTY/Shell 统一 30s)
+		conn, err = net.DialTimeout("tcp", addr, 8*time.Second)
+		if err != nil {
+			logConnect("dial-fail", err.Error())
+			return nil, fmt.Errorf("连接失败: %v", err)
+		}
+		logConnect("dial", time.Since(t0).String())
+		_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+		sshConn, chans, reqs, herr := ssh.NewClientConn(conn, addr, clientCfg)
+		if herr != nil {
+			conn.Close()
+			logConnect("handshake+auth-fail", herr.Error())
+			if isAuthError(herr) {
+				return nil, fmt.Errorf("认证失败: %v", herr)
+			}
+			return nil, fmt.Errorf("连接失败(握手/超时): %v", herr)
+		}
+		logConnect("handshake+auth", time.Since(t0).String())
+		client = ssh.NewClient(sshConn, chans, reqs)
 	}
-	logConnect("handshake+auth", time.Since(t0).String())
-	client := ssh.NewClient(sshConn, chans, reqs)
 
 	sess, err := client.NewSession()
 	if err != nil {
@@ -175,6 +244,9 @@ func connectOnce(cfg model.SshConfig) (*Session, error) {
 		output:  make(chan model.OutputMsg, 64),
 		done:    make(chan error, 1),
 		stop:    make(chan struct{}),
+	}
+	if jumpClient != nil {
+		s.jumpClient = jumpClient
 	}
 	go s.pump(stdout)
 	go s.pump(stderr)
@@ -310,6 +382,9 @@ func (s *Session) Close() {
 		s.sftpMu.Unlock()
 		s.session.Close()
 		s.client.Close()
+		if s.jumpClient != nil {
+			s.jumpClient.Close()
+		}
 	})
 }
 

@@ -11,6 +11,15 @@ type SshConfig struct {
 	PrivateKey     string `json:"privateKey"`     // 私钥 PEM 内容
 	PrivateKeyPath string `json:"privateKeyPath"` // 私钥文件路径 (UI 选择后由后端读取)
 	Passphrase     string `json:"passphrase"`
+	OTP            string `json:"otp"` // 双因素验证码 (可选, keyboard-interactive 应答)
+
+	// 跳板机 (ProxyJump, 可选)
+	JumpHost           string `json:"jumpHost"`
+	JumpPort           int    `json:"jumpPort"`
+	JumpUser           string `json:"jumpUser"`
+	JumpPassword       string `json:"jumpPassword"`
+	JumpPrivateKeyPath string `json:"jumpPrivateKeyPath"`
+	JumpPassphrase     string `json:"jumpPassphrase"`
 }
 
 // FileEntry 文件/目录条目

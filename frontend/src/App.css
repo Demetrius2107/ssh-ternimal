@@ -69,7 +69,7 @@
     padding: 10px;
     border: none;
     border-radius: 4px;
-    background: #007aff;
+    background: var(--accent);
     color: #fff;
     font-size: 14px;
     cursor: pointer;
@@ -102,7 +102,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 6px 10px;
-    background: #2d2d30;
+    background: var(--bar);
     color: #ccc;
     font-size: 13px;
 }
@@ -189,7 +189,7 @@
     display: flex;
     gap: 4px;
     padding: 6px 10px 0;
-    background: #252526;
+    background: var(--bar);
 }
 
 .tab {
@@ -352,7 +352,7 @@
 
 .transfer-actions button {
     padding: 6px 14px;
-    background: #007aff;
+    background: var(--accent);
     color: #fff;
     border: none;
     border-radius: 4px;
@@ -425,7 +425,7 @@
 
 .t-bar-fill {
     height: 100%;
-    background: #007aff;
+    background: var(--accent);
     transition: width 0.2s;
 }
 
@@ -441,7 +441,7 @@
     align-items: center;
     gap: 4px;
     padding: 6px 8px;
-    background: #2a2a2c;
+    background: var(--bar);
     border-bottom: 1px solid #3a3a3c;
 }
 
@@ -449,7 +449,7 @@
     padding: 4px 12px;
     border: none;
     border-radius: 4px;
-    background: #007aff;
+    background: var(--accent);
     color: #fff;
     cursor: pointer;
     font-size: 13px;
@@ -469,6 +469,16 @@
     background: #4a4a4e;
 }
 
+.theme-select {
+    padding: 4px 10px;
+    border: 1px solid #3a3a3c;
+    border-radius: 6px;
+    background: #3a3a3d;
+    color: #ddd;
+    font-size: 13px;
+    cursor: pointer;
+}
+
 .session-tab {
     display: flex;
     align-items: center;
@@ -483,7 +493,7 @@
 }
 
 .session-tab.active {
-    background: #007aff;
+    background: var(--accent);
     color: #fff;
 }
 
@@ -591,7 +601,7 @@
     display: flex;
     gap: 6px;
     padding: 4px 8px;
-    background: #252526;
+    background: var(--bar);
     align-items: center;
 }
 
@@ -714,7 +724,7 @@
     padding: 10px 28px;
     border: none;
     border-radius: 10px;
-    background: #007aff;
+    background: var(--accent);
     color: #fff;
     font-size: 15px;
     font-weight: 500;
@@ -789,7 +799,7 @@
 
 .hc-loading {
     font-size: 12px;
-    color: #007aff;
+    color: var(--accent);
 }
 
 .hc-meta {
@@ -869,7 +879,7 @@
     align-items: center;
     gap: 14px;
     padding: 4px 10px;
-    background: #2a2a2c;
+    background: var(--bar);
     border-top: 1px solid #3a3a3c;
     font-size: 12px;
     color: #8e8e93;
@@ -902,7 +912,7 @@
 }
 
 .sb-msg {
-    color: #007aff;
+    color: var(--accent);
 }
 
 .tc-light {
@@ -925,7 +935,7 @@ body.theme-light .session-tab {
 }
 
 body.theme-light .session-tab.active {
-    background: #007aff;
+    background: var(--accent);
     color: #fff;
 }
 
@@ -945,7 +955,7 @@ body.theme-light .tab {
 
 body.theme-light .tab.active {
     background: #ffffff;
-    color: #007aff;
+    color: var(--accent);
 }
 
 body.theme-light .terminal-toolbar,

@@ -65,6 +65,13 @@ export namespace model {
 	    privateKey: string;
 	    privateKeyPath: string;
 	    passphrase: string;
+	    otp: string;
+	    jumpHost: string;
+	    jumpPort: number;
+	    jumpUser: string;
+	    jumpPassword: string;
+	    jumpPrivateKeyPath: string;
+	    jumpPassphrase: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SshConfig(source);
@@ -80,6 +87,13 @@ export namespace model {
 	        this.privateKey = source["privateKey"];
 	        this.privateKeyPath = source["privateKeyPath"];
 	        this.passphrase = source["passphrase"];
+	        this.otp = source["otp"];
+	        this.jumpHost = source["jumpHost"];
+	        this.jumpPort = source["jumpPort"];
+	        this.jumpUser = source["jumpUser"];
+	        this.jumpPassword = source["jumpPassword"];
+	        this.jumpPrivateKeyPath = source["jumpPrivateKeyPath"];
+	        this.jumpPassphrase = source["jumpPassphrase"];
 	    }
 	}
 	export class StoredSession {

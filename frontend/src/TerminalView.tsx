@@ -4,7 +4,10 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { SshSend, SshResize } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
+import { THEMES, type ThemeName } from './themes';
 import '@xterm/xterm/css/xterm.css';
+
+export type { ThemeName } from './themes';
 
 interface SshOutput {
     sessionId: number;
@@ -15,56 +18,6 @@ interface SshExit {
     sessionId: number;
     error: string;
 }
-
-export type ThemeName = 'dark' | 'light';
-
-// Apple Terminal 调色板: dark = Homebrew, light = Pro
-const THEMES: Record<ThemeName, any> = {
-    dark: {
-        background: '#283033',
-        foreground: '#D9E0E3',
-        cursor: '#D9E0E3',
-        selectionBackground: '#264f78',
-        black: '#000000',
-        red: '#C91B00',
-        green: '#00C200',
-        yellow: '#C7C400',
-        blue: '#0225C7',
-        magenta: '#CA30C7',
-        cyan: '#00C5C7',
-        white: '#C7C7C7',
-        brightBlack: '#686868',
-        brightRed: '#FF6E67',
-        brightGreen: '#5FF967',
-        brightYellow: '#FEFB67',
-        brightBlue: '#6871FF',
-        brightMagenta: '#FF77FF',
-        brightCyan: '#5FFDFF',
-        brightWhite: '#FFFFFF',
-    },
-    light: {
-        background: '#FFFFFF',
-        foreground: '#000000',
-        cursor: '#000000',
-        selectionBackground: '#bcd6ee',
-        black: '#000000',
-        red: '#C91B00',
-        green: '#00C200',
-        yellow: '#C7C400',
-        blue: '#0225C7',
-        magenta: '#CA30C7',
-        cyan: '#00C5C7',
-        white: '#C7C7C7',
-        brightBlack: '#686868',
-        brightRed: '#FF6E67',
-        brightGreen: '#5FF967',
-        brightYellow: '#FEFB67',
-        brightBlue: '#6871FF',
-        brightMagenta: '#FF77FF',
-        brightCyan: '#5FFDFF',
-        brightWhite: '#FFFFFF',
-    },
-};
 
 // TerminalView 终端组件: 输出渲染/输入转发/尺寸同步/查找/右键菜单/主题实时切换
 export default function TerminalView({ sessionId, active, theme }: { sessionId: number; active: boolean; theme: ThemeName }) {
@@ -83,7 +36,7 @@ export default function TerminalView({ sessionId, active, theme }: { sessionId: 
             cursorBlink: true,
             scrollback: 10000,
             // 双击选中单词是 xterm 内建默认行为
-            theme: THEMES[theme],
+            theme: THEMES[theme].xterm,
         });
         const fit = new FitAddon();
         const search = new SearchAddon();
@@ -129,7 +82,7 @@ export default function TerminalView({ sessionId, active, theme }: { sessionId: 
 
     // 主题实时切换 (无需重启)
     useEffect(() => {
-        if (termRef.current) termRef.current.options.theme = THEMES[theme];
+        if (termRef.current) termRef.current.options.theme = THEMES[theme].xterm;
     }, [theme]);
 
     // Ctrl+F 只对激活会话生效
@@ -222,7 +175,7 @@ export default function TerminalView({ sessionId, active, theme }: { sessionId: 
                 </div>
             )}
             <div
-                className={`terminal-container ${theme === 'light' ? 'tc-light' : ''}`}
+                className={`terminal-container ${THEMES[theme].mode === 'light' ? 'tc-light' : ''}`}
                 ref={containerRef}
                 onContextMenu={(e) => {
                     e.preventDefault();

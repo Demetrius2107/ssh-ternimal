@@ -5,7 +5,7 @@ import { EventsOn } from '../wailsjs/runtime/runtime';
 import ConnectForm from './ConnectForm';
 import Workspace from './Workspace';
 import HomeView from './HomeView';
-import type { ThemeName } from './TerminalView';
+import { THEMES, THEME_LIST, type ThemeName } from './themes';
 import './App.css';
 
 interface OpenSession {
@@ -32,7 +32,11 @@ function App() {
 
     useEffect(() => {
         localStorage.setItem('theme', theme);
-        document.body.classList.toggle('theme-light', theme === 'light');
+        const t = THEMES[theme];
+        document.body.classList.toggle('theme-light', t.mode === 'light');
+        document.documentElement.style.setProperty('--accent', t.accent);
+        document.documentElement.style.setProperty('--bg', t.chromeBg);
+        document.documentElement.style.setProperty('--bar', t.chromeBar);
     }, [theme]);
 
     // 会话意外结束 (ssh-exit) 时自动移除标签; EventsOn 返回注销函数
@@ -84,9 +88,18 @@ function App() {
                 <button className="btn-hist" onClick={openHistory}>
                     🕘 历史
                 </button>
-                <button className="btn-hist" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}>
-                    🌓 主题
-                </button>
+                <select
+                    className="theme-select"
+                    value={theme}
+                    onChange={(e) => setTheme(e.target.value as ThemeName)}
+                    title="主题"
+                >
+                    {THEME_LIST.map((t) => (
+                        <option key={t} value={t}>
+                            {THEMES[t].label}
+                        </option>
+                    ))}
+                </select>
                 {openSessions.map((s) => (
                     <div
                         key={s.id}

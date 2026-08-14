@@ -1,10 +1,16 @@
+:root {
+    --accent: #0088FF;
+    --bg: #1e1e1e;
+    --bar: #2a2a2c;
+}
+
 html, body, #root {
     height: 100%;
     margin: 0;
 }
 
 body {
-    background: #1e1e1e;
+    background: var(--bg);
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'Microsoft YaHei', sans-serif;
     -webkit-font-smoothing: antialiased;
 }
