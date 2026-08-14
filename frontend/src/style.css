@@ -1,0 +1,13 @@
+html, body, #root {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    background: #1e1e1e;
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+}

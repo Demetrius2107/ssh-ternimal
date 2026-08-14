@@ -1,16 +1,14 @@
 # Node / 前端
-node_modules/
-dist/
-frontend/dist/
+node_modules
+frontend/dist
+
+# Wails
+build/bin
 
 # Go
 *.exe
-*.exe~
 *.test
 *.out
-
-# Wails
-build/bin/
 
 # 日志与临时文件
 *.log
