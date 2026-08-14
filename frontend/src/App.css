@@ -112,12 +112,17 @@
 }
 
 .terminal-toolbar button {
-    background: #8a2d2d;
-    color: #fff;
+    background: #3a3a3d;
+    color: #ddd;
     border: none;
     border-radius: 4px;
     padding: 4px 12px;
     cursor: pointer;
+    font-size: 12px;
+}
+
+.terminal-toolbar button:hover {
+    background: #4a4a4e;
 }
 
 .terminal-container {
@@ -174,7 +179,8 @@
 
 /* ---------- 工作区标签页 ---------- */
 .workspace {
-    height: 100vh;
+    height: 100%;
+    min-height: 0;
     display: flex;
     flex-direction: column;
 }
@@ -421,4 +427,175 @@
     height: 100%;
     background: #0e639c;
     transition: width 0.2s;
+}
+
+/* ---------- 顶层会话标签栏 ---------- */
+.app-root {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.session-tabbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    background: #252526;
+    border-bottom: 1px solid #333;
+}
+
+.btn-new {
+    padding: 4px 12px;
+    border: none;
+    border-radius: 4px;
+    background: #0e639c;
+    color: #fff;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.session-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: #2d2d30;
+    color: #bbb;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    max-width: 240px;
+}
+
+.session-tab.active {
+    background: #0e639c;
+    color: #fff;
+}
+
+.session-tab .st-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tab-x {
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.session-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.session-pane {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.session-pane.hidden {
+    display: none;
+}
+
+.empty-hint {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    font-size: 15px;
+}
+
+/* ---------- 模态窗口 ---------- */
+.modal-mask {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.modal {
+    background: #2d2d30;
+    border-radius: 8px;
+    padding: 20px;
+    max-height: 92vh;
+    overflow-y: auto;
+}
+
+.modal .connect-panel {
+    margin: 0;
+}
+
+.modal-actions {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.modal-actions button {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 4px;
+    background: #3a3a3d;
+    color: #ddd;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+/* ---------- 工作区子标签页 ---------- */
+.tab-spacer {
+    flex: 1;
+}
+
+.tab-disconnect {
+    padding: 4px 12px;
+    border: none;
+    border-radius: 4px;
+    background: #8a2d2d;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+/* ---------- 终端查找栏 ---------- */
+.find-bar {
+    display: flex;
+    gap: 6px;
+    padding: 4px 8px;
+    background: #252526;
+    align-items: center;
+}
+
+.find-bar input {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 8px;
+    background: #1e1e1e;
+    color: #eee;
+    border: 1px solid #555;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.find-bar button {
+    padding: 4px 10px;
+    background: #3a3a3d;
+    color: #ddd;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
 }
