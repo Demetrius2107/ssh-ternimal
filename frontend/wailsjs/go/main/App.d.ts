@@ -8,9 +8,15 @@ export function DeleteSession(arg1:string):Promise<void>;
 
 export function GetSessionMetrics(arg1:number):Promise<model.Metrics>;
 
+export function GetSysMetrics(arg1:number):Promise<model.SysMetrics>;
+
+export function LaunchRdp(arg1:string,arg2:number,arg3:string):Promise<void>;
+
 export function ListHistory():Promise<Array<model.HistoryEntry>>;
 
 export function ListSessions():Promise<Array<model.StoredSession>>;
+
+export function ListTunnels():Promise<Array<model.Tunnel>>;
 
 export function LoadSession(arg1:string):Promise<model.SshConfig>;
 
@@ -57,3 +63,7 @@ export function SshKeepAlive(arg1:number):Promise<number>;
 export function SshResize(arg1:number,arg2:number,arg3:number):Promise<void>;
 
 export function SshSend(arg1:number,arg2:string):Promise<void>;
+
+export function StartTunnel(arg1:number,arg2:string,arg3:number,arg4:string):Promise<number>;
+
+export function StopTunnel(arg1:number):Promise<void>;

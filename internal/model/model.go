@@ -64,3 +64,23 @@ type HistoryEntry struct {
 	Size    int64  `json:"size"`
 	ModTime string `json:"modTime"`
 }
+
+// Tunnel SSH 端口转发 (隧道)
+type Tunnel struct {
+	ID         uint64 `json:"id"`
+	SessionID  uint64 `json:"sessionId"`
+	Type       string `json:"type"` // local / dynamic / remote
+	ListenAddr string `json:"listenAddr"`
+	TargetAddr string `json:"targetAddr"`
+	Status     string `json:"status"` // running / stopped
+}
+
+// SysMetrics 远程主机资源指标
+type SysMetrics struct {
+	CPUPercent float64 `json:"cpuPercent"`
+	MemUsed    uint64  `json:"memUsed"`  // KB
+	MemTotal   uint64  `json:"memTotal"` // KB
+	NetIn      uint64  `json:"netIn"`    // 累计接收字节
+	NetOut     uint64  `json:"netOut"`   // 累计发送字节
+	Uptime     float64 `json:"uptime"`   // 秒
+}

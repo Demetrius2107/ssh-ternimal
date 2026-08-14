@@ -19,6 +19,12 @@ interface SshExit {
     error: string;
 }
 
+interface SshReconnect {
+    sessionId: number;
+    attempt: number;
+    max: number;
+}
+
 // TerminalView 终端组件: 输出渲染/输入转发/尺寸同步/查找/右键菜单/主题实时切换
 export default function TerminalView({ sessionId, active, theme }: { sessionId: number; active: boolean; theme: ThemeName }) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -54,8 +60,12 @@ export default function TerminalView({ sessionId, active, theme }: { sessionId: 
         const onExit = (e: SshExit) => {
             if (e.sessionId === sessionId) setExitMsg(e.error ? `会话已退出: ${e.error}` : '会话已结束');
         };
+        const onReconnect = (e: SshReconnect) => {
+            if (e.sessionId === sessionId) setExitMsg(`连接断开，正在重连 (${e.attempt}/${e.max})...`);
+        };
         const offOutput = EventsOn('ssh-output', onOutput);
         const offExit = EventsOn('ssh-exit', onExit);
+        const offReconnect = EventsOn('ssh-reconnect', onReconnect);
 
         const dataDispose = term.onData((data) => {
             SshSend(sessionId, data);
@@ -75,6 +85,7 @@ export default function TerminalView({ sessionId, active, theme }: { sessionId: 
             dataDispose.dispose();
             offOutput();
             offExit();
+            offReconnect();
             term.dispose();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -919,6 +919,41 @@
     background: #ffffff !important;
 }
 
+/* ---------- Liquid Glass 深度玻璃化 ---------- */
+.session-tabbar,
+.tab-bar,
+.terminal-toolbar,
+.find-bar,
+.status-bar {
+    background: rgba(42, 42, 44, 0.72);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+}
+
+.modal {
+    background: rgba(42, 42, 44, 0.85);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    backdrop-filter: blur(30px) saturate(180%);
+}
+
+.ctx-menu {
+    background: rgba(42, 42, 44, 0.85);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+}
+
+.home-card,
+.home-hist,
+.home-empty {
+    background: rgba(42, 42, 44, 0.6);
+    -webkit-backdrop-filter: blur(12px) saturate(160%);
+    backdrop-filter: blur(12px) saturate(160%);
+}
+
+.session-tab {
+    background: rgba(45, 45, 48, 0.6);
+}
+
 /* ---------- 亮色主题 (Apple Pro) ---------- */
 body.theme-light {
     background: #f5f5f7;
@@ -1002,4 +1037,178 @@ body.theme-light .connect-panel h1 {
 body.theme-light .modal-actions button {
     background: #d1d1d6;
     color: #333;
+}
+
+body.theme-light .session-tabbar,
+body.theme-light .tab-bar,
+body.theme-light .terminal-toolbar,
+body.theme-light .find-bar,
+body.theme-light .status-bar {
+    background: rgba(248, 248, 250, 0.72);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+}
+
+body.theme-light .modal {
+    background: rgba(255, 255, 255, 0.85);
+    -webkit-backdrop-filter: blur(30px);
+    backdrop-filter: blur(30px);
+}
+
+body.theme-light .home-card,
+body.theme-light .home-hist,
+body.theme-light .home-empty {
+    background: rgba(255, 255, 255, 0.7);
+}
+
+/* ---------- 隧道管理 ---------- */
+.tunnel-modal {
+    width: 560px;
+    max-width: 92vw;
+}
+
+.tunnel-form {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.tunnel-form select,
+.tunnel-form input {
+    padding: 6px 8px;
+    background: #1e1e1e;
+    color: #eee;
+    border: 1px solid #3a3a3c;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.tunnel-form input[type='number'] {
+    width: 90px;
+}
+
+.tunnel-form input[type='text'] {
+    flex: 1;
+    min-width: 140px;
+}
+
+.tunnel-form button {
+    padding: 6px 16px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.tunnel-msg {
+    color: #34c759;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.tunnel-list {
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.tunnel-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-bottom: 1px solid #3a3a3c;
+    font-size: 13px;
+}
+
+.tunnel-item button {
+    padding: 3px 12px;
+    border: none;
+    border-radius: 6px;
+    background: #8a2d2d;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.tunnel-item button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.ti-info {
+    color: #ddd;
+    font-family: Consolas, monospace;
+    word-break: break-all;
+}
+
+/* ---------- 资源监控 ---------- */
+.monitor-modal {
+    width: 520px;
+    max-width: 92vw;
+}
+
+.monitor-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 4px 0;
+}
+
+.mon-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+}
+
+.mon-label {
+    width: 56px;
+    color: #8e8e93;
+    flex-shrink: 0;
+}
+
+.mon-bar {
+    flex: 1;
+    height: 10px;
+    background: #3a3a3c;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.mon-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 5px;
+    transition: width 0.5s;
+}
+
+.mon-fill.mem {
+    background: #30d158;
+}
+
+.mon-val {
+    min-width: 220px;
+    text-align: right;
+    color: #ddd;
+    font-family: Consolas, monospace;
+    white-space: nowrap;
+}
+
+/* ---------- 连接表单操作行 ---------- */
+.form-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.form-actions button {
+    flex: 1;
+}
+
+.form-actions button[type='button'] {
+    background: #3a3a3d;
+    color: #ddd;
 }

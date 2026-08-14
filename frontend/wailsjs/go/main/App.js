@@ -14,12 +14,24 @@ export function GetSessionMetrics(arg1) {
   return window['go']['main']['App']['GetSessionMetrics'](arg1);
 }
 
+export function GetSysMetrics(arg1) {
+  return window['go']['main']['App']['GetSysMetrics'](arg1);
+}
+
+export function LaunchRdp(arg1, arg2, arg3) {
+  return window['go']['main']['App']['LaunchRdp'](arg1, arg2, arg3);
+}
+
 export function ListHistory() {
   return window['go']['main']['App']['ListHistory']();
 }
 
 export function ListSessions() {
   return window['go']['main']['App']['ListSessions']();
+}
+
+export function ListTunnels() {
+  return window['go']['main']['App']['ListTunnels']();
 }
 
 export function LoadSession(arg1) {
@@ -112,4 +124,12 @@ export function SshResize(arg1, arg2, arg3) {
 
 export function SshSend(arg1, arg2) {
   return window['go']['main']['App']['SshSend'](arg1, arg2);
+}
+
+export function StartTunnel(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['StartTunnel'](arg1, arg2, arg3, arg4);
+}
+
+export function StopTunnel(arg1) {
+  return window['go']['main']['App']['StopTunnel'](arg1);
 }

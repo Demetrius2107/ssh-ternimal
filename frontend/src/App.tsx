@@ -5,6 +5,8 @@ import { EventsOn } from '../wailsjs/runtime/runtime';
 import ConnectForm from './ConnectForm';
 import Workspace from './Workspace';
 import HomeView from './HomeView';
+import TunnelPanel from './TunnelPanel';
+import MonitorPanel from './MonitorPanel';
 import { THEMES, THEME_LIST, type ThemeName } from './themes';
 import './App.css';
 
@@ -25,6 +27,8 @@ function App() {
     const [activeId, setActiveId] = useState<number | null>(null);
     const [showConnect, setShowConnect] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
+    const [showTunnel, setShowTunnel] = useState(false);
+    const [showMonitor, setShowMonitor] = useState(false);
     const [historyList, setHistoryList] = useState<model.HistoryEntry[]>([]);
     const [historyContent, setHistoryContent] = useState<string | null>(null);
     const [historyErr, setHistoryErr] = useState('');
@@ -87,6 +91,12 @@ function App() {
                 </button>
                 <button className="btn-hist" onClick={openHistory}>
                     🕘 历史
+                </button>
+                <button className="btn-hist" onClick={() => setShowTunnel(true)} disabled={openSessions.length === 0}>
+                    🚇 隧道
+                </button>
+                <button className="btn-hist" onClick={() => setShowMonitor(true)} disabled={openSessions.length === 0}>
+                    📊 监控
                 </button>
                 <select
                     className="theme-select"
@@ -164,6 +174,28 @@ function App() {
                                 <button onClick={() => setHistoryContent(null)}>返回列表</button>
                             )}
                             <button onClick={() => setShowHistory(false)}>关闭</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {showTunnel && (
+                <div className="modal-mask" onClick={() => setShowTunnel(false)}>
+                    <div className="modal tunnel-modal" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="modal-title">SSH 隧道管理</h3>
+                        <TunnelPanel sessionId={activeId ?? (openSessions[0]?.id ?? 0)} />
+                        <div className="modal-actions">
+                            <button onClick={() => setShowTunnel(false)}>关闭</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {showMonitor && (
+                <div className="modal-mask" onClick={() => setShowMonitor(false)}>
+                    <div className="modal monitor-modal" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="modal-title">远程主机监控</h3>
+                        <MonitorPanel sessionId={activeId ?? (openSessions[0]?.id ?? 0)} />
+                        <div className="modal-actions">
+                            <button onClick={() => setShowMonitor(false)}>关闭</button>
                         </div>
                     </div>
                 </div>

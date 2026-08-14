@@ -344,6 +344,42 @@ func (s *Session) Metrics() model.Metrics {
 	}
 }
 
+// Dial 打开到目标的 direct-tcpip 通道 (本地/动态转发用)
+func (s *Session) Dial(addr string) (net.Conn, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, errors.New("会话已关闭")
+	}
+	return s.client.Dial("tcp", addr)
+}
+
+// ListenRemote 请求远程端口转发 (远程转发 -R 用)
+func (s *Session) ListenRemote(addr string) (net.Listener, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, errors.New("会话已关闭")
+	}
+	return s.client.Listen("tcp", addr)
+}
+
+// Exec 在远程执行命令并返回输出 (资源监控等一次性命令用)
+func (s *Session) Exec(cmd string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return "", errors.New("会话已关闭")
+	}
+	sess, err := s.client.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer sess.Close()
+	out, err := sess.CombinedOutput(cmd)
+	return string(out), err
+}
+
 // Send 发送终端输入
 func (s *Session) Send(data string) error {
 	s.mu.Lock()

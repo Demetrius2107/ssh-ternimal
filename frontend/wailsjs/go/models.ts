@@ -116,6 +116,28 @@ export namespace model {
 	        this.username = source["username"];
 	    }
 	}
+	export class SysMetrics {
+	    cpuPercent: number;
+	    memUsed: number;
+	    memTotal: number;
+	    netIn: number;
+	    netOut: number;
+	    uptime: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SysMetrics(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cpuPercent = source["cpuPercent"];
+	        this.memUsed = source["memUsed"];
+	        this.memTotal = source["memTotal"];
+	        this.netIn = source["netIn"];
+	        this.netOut = source["netOut"];
+	        this.uptime = source["uptime"];
+	    }
+	}
 	export class TransferTask {
 	    taskId: number;
 	    sessionId: number;
@@ -148,6 +170,28 @@ export namespace model {
 	        this.error = source["error"];
 	        this.conflict = source["conflict"];
 	        this.isDir = source["isDir"];
+	    }
+	}
+	export class Tunnel {
+	    id: number;
+	    sessionId: number;
+	    type: string;
+	    listenAddr: string;
+	    targetAddr: string;
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Tunnel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.sessionId = source["sessionId"];
+	        this.type = source["type"];
+	        this.listenAddr = source["listenAddr"];
+	        this.targetAddr = source["targetAddr"];
+	        this.status = source["status"];
 	    }
 	}
 

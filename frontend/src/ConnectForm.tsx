@@ -6,6 +6,7 @@ import {
     DeleteSession,
     LoadSession,
     PickFile,
+    LaunchRdp,
 } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 
@@ -110,6 +111,16 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
             setError(e?.message ?? String(e));
         } finally {
             setConnecting(false);
+        }
+    }
+
+    async function launchRdp() {
+        if (!host) return;
+        try {
+            await LaunchRdp(host, port, username);
+            setError('');
+        } catch (e: any) {
+            setError(e?.message ?? String(e));
         }
     }
 
@@ -286,9 +297,14 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                         )}
                     </>
                 )}
-                <button type="submit" disabled={connecting}>
-                    {connecting ? '连接中...' : '连接'}
-                </button>
+                <div className="form-actions">
+                    <button type="submit" disabled={connecting}>
+                        {connecting ? '连接中...' : '连接'}
+                    </button>
+                    <button type="button" onClick={launchRdp} disabled={!host} title="用系统 mstsc 打开远程桌面">
+                        🖥 远程桌面
+                    </button>
+                </div>
             </form>
             {error && <div className="error-box">{error}</div>}
             <div className="modal-actions">
