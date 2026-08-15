@@ -36,6 +36,12 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
     const [jumpPort, setJumpPort] = useState(22);
     const [jumpUser, setJumpUser] = useState('');
     const [jumpPassword, setJumpPassword] = useState('');
+    const [useProxy, setUseProxy] = useState(false);
+    const [proxyType, setProxyType] = useState<'http' | 'socks5'>('http');
+    const [proxyHost, setProxyHost] = useState('');
+    const [proxyPort, setProxyPort] = useState(1080);
+    const [proxyUser, setProxyUser] = useState('');
+    const [proxyPassword, setProxyPassword] = useState('');
     const [connecting, setConnecting] = useState(false);
     const [error, setError] = useState('');
 
@@ -70,6 +76,12 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
             setPassword(cfg.password);
             setEncoding(cfg.encoding ?? 'auto');
             setHostKeyMode(cfg.hostKeyMode ?? 'accept-new');
+            setUseProxy(!!cfg.proxyType && !!cfg.proxyHost);
+            setProxyType((cfg.proxyType as 'http' | 'socks5') || 'http');
+            setProxyHost(cfg.proxyHost ?? '');
+            setProxyPort(cfg.proxyPort || 1080);
+            setProxyUser(cfg.proxyUser ?? '');
+            setProxyPassword(cfg.proxyPassword ?? '');
             // 回填该会话所在分组 (从会话列表取, 便于继续修改)
             const s = sessions.find((x) => x.id === selectedSession);
             setSessionGroup(s?.group ?? '');
@@ -124,13 +136,18 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                 jumpPassword: useJump ? jumpPassword : '',
                 jumpPrivateKeyPath: '',
                 jumpPassphrase: '',
+                proxyType: useProxy ? proxyType : '',
+                proxyHost: useProxy ? proxyHost : '',
+                proxyPort,
+                proxyUser: useProxy ? proxyUser : '',
+                proxyPassword: useProxy ? proxyPassword : '',
             });
             const id = await Connect(cfg);
             const label = protocol === 'telnet' ? `${host}:${port}` : `${username}@${host}:${port}`;
             onConnected(id, label);
             if (saveSession) {
                 const name = sessionName.trim() || `${username}@${host}`;
-                SaveSession(name, host, port, username, password, encoding, hostKeyMode)
+                SaveSession(name, host, port, username, password, encoding, hostKeyMode, useProxy ? proxyType : '', useProxy ? proxyHost : '', proxyPort, useProxy ? proxyUser : '', useProxy ? proxyPassword : '')
                     .then(async (sid) => {
                         if (sessionGroup) await MoveSession(sid, sessionGroup); // 新会话落入分组
                         refreshSessions();
@@ -380,6 +397,56 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                                         type="password"
                                         value={jumpPassword}
                                         onChange={(e) => setJumpPassword(e.target.value)}
+                                    />
+                                </label>
+                            </>
+                        )}
+                        <label className="save-session">
+                            <input type="checkbox" checked={useProxy} onChange={(e) => setUseProxy(e.target.checked)} />
+                            使用代理 (HTTP/SOCKS5)
+                        </label>
+                        {useProxy && (
+                            <>
+                                <label>
+                                    代理类型
+                                    <select value={proxyType} onChange={(e) => setProxyType(e.target.value as 'http' | 'socks5')}>
+                                        <option value="http">HTTP CONNECT</option>
+                                        <option value="socks5">SOCKS5</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    代理主机
+                                    <input
+                                        value={proxyHost}
+                                        onChange={(e) => setProxyHost(e.target.value)}
+                                        placeholder="127.0.0.1"
+                                    />
+                                </label>
+                                <label>
+                                    代理端口
+                                    <input
+                                        type="number"
+                                        value={proxyPort}
+                                        min={1}
+                                        max={65535}
+                                        onChange={(e) => setProxyPort(Number(e.target.value))}
+                                    />
+                                </label>
+                                <label>
+                                    代理用户名 (可选)
+                                    <input
+                                        value={proxyUser}
+                                        onChange={(e) => setProxyUser(e.target.value)}
+                                        placeholder="代理认证账号"
+                                    />
+                                </label>
+                                <label>
+                                    代理密码 (可选)
+                                    <input
+                                        type="password"
+                                        value={proxyPassword}
+                                        onChange={(e) => setProxyPassword(e.target.value)}
+                                        placeholder="代理认证密码"
                                     />
                                 </label>
                             </>

@@ -22,6 +22,13 @@ type SshConfig struct {
 	JumpPassword       string `json:"jumpPassword"`
 	JumpPrivateKeyPath string `json:"jumpPrivateKeyPath"`
 	JumpPassphrase     string `json:"jumpPassphrase"`
+
+	// 代理 (HTTP CONNECT / SOCKS5, 可选; 与跳板机互斥)
+	ProxyType     string `json:"proxyType"` // ""(无) / http / socks5
+	ProxyHost     string `json:"proxyHost"`
+	ProxyPort     int    `json:"proxyPort"`
+	ProxyUser     string `json:"proxyUser"`
+	ProxyPassword string `json:"proxyPassword"`
 }
 
 // FileEntry 文件/目录条目
@@ -60,6 +67,10 @@ type StoredSession struct {
 	Encoding    string `json:"encoding"`    // 输出编码: auto / utf-8 / gbk (空=auto)
 	HostKeyMode string `json:"hostKeyMode"` // 主机密钥校验: off / accept-new / strict (空=accept-new)
 	Group       string `json:"group"`       // 分组名 (空=未分组)
+	ProxyType   string `json:"proxyType"`   // ""(无) / http / socks5
+	ProxyHost   string `json:"proxyHost"`
+	ProxyPort   int    `json:"proxyPort"`
+	ProxyUser   string `json:"proxyUser"`
 }
 
 // HistoryEntry 历史记录条目

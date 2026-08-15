@@ -222,6 +222,11 @@ export namespace model {
 	    jumpPassword: string;
 	    jumpPrivateKeyPath: string;
 	    jumpPassphrase: string;
+	    proxyType: string;
+	    proxyHost: string;
+	    proxyPort: number;
+	    proxyUser: string;
+	    proxyPassword: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SshConfig(source);
@@ -246,6 +251,11 @@ export namespace model {
 	        this.jumpPassword = source["jumpPassword"];
 	        this.jumpPrivateKeyPath = source["jumpPrivateKeyPath"];
 	        this.jumpPassphrase = source["jumpPassphrase"];
+	        this.proxyType = source["proxyType"];
+	        this.proxyHost = source["proxyHost"];
+	        this.proxyPort = source["proxyPort"];
+	        this.proxyUser = source["proxyUser"];
+	        this.proxyPassword = source["proxyPassword"];
 	    }
 	}
 	export class StoredSession {
@@ -257,6 +267,10 @@ export namespace model {
 	    encoding: string;
 	    hostKeyMode: string;
 	    group: string;
+	    proxyType: string;
+	    proxyHost: string;
+	    proxyPort: number;
+	    proxyUser: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new StoredSession(source);
@@ -272,6 +286,10 @@ export namespace model {
 	        this.encoding = source["encoding"];
 	        this.hostKeyMode = source["hostKeyMode"];
 	        this.group = source["group"];
+	        this.proxyType = source["proxyType"];
+	        this.proxyHost = source["proxyHost"];
+	        this.proxyPort = source["proxyPort"];
+	        this.proxyUser = source["proxyUser"];
 	    }
 	}
 	export class SysMetrics {

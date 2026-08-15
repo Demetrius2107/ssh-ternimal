@@ -939,11 +939,24 @@ func (a *App) LaunchRdp(host string, port int, username string) error {
 // ---------- 会话管理 ----------
 
 // SaveSession 保存会话配置, 密码存系统凭据库, 返回会话 ID
-func (a *App) SaveSession(name, host string, port int, username, password, encoding, hostKeyMode string) (string, error) {
+func (a *App) SaveSession(name, host string, port int, username, password, encoding, hostKeyMode, proxyType, proxyHost string, proxyPort int, proxyUser, proxyPassword string) (string, error) {
 	if a.store == nil {
 		return "", errors.New("会话存储未初始化")
 	}
-	return a.store.Save(model.StoredSession{Name: name, Host: host, Port: port, Username: username, Encoding: encoding, HostKeyMode: hostKeyMode}, password)
+	id, err := a.store.Save(model.StoredSession{
+		Name: name, Host: host, Port: port, Username: username,
+		Encoding: encoding, HostKeyMode: hostKeyMode,
+		ProxyType: proxyType, ProxyHost: proxyHost, ProxyPort: proxyPort, ProxyUser: proxyUser,
+	}, password)
+	if err != nil {
+		return "", err
+	}
+	if proxyPassword != "" {
+		if err := keyring.Set(aiKeyringService, id+":proxy", proxyPassword); err != nil {
+			return "", fmt.Errorf("保存代理密码失败: %v", err)
+		}
+	}
+	return id, nil
 }
 
 // ListSessions 列出全部保存的会话
@@ -1226,5 +1239,11 @@ func (a *App) LoadSession(id string) (model.SshConfig, error) {
 	if err != nil {
 		return model.SshConfig{}, err
 	}
-	return model.SshConfig{Host: sess.Host, Port: sess.Port, Username: sess.Username, Password: pw, Encoding: sess.Encoding, HostKeyMode: sess.HostKeyMode}, nil
+	proxyPw, _ := keyring.Get(aiKeyringService, id+":proxy")
+	return model.SshConfig{
+		Host: sess.Host, Port: sess.Port, Username: sess.Username, Password: pw,
+		Encoding: sess.Encoding, HostKeyMode: sess.HostKeyMode,
+		ProxyType: sess.ProxyType, ProxyHost: sess.ProxyHost, ProxyPort: sess.ProxyPort,
+		ProxyUser: sess.ProxyUser, ProxyPassword: proxyPw,
+	}, nil
 }

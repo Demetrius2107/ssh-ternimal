@@ -114,8 +114,15 @@ func buildAuthMethods(user, password, privateKey, privateKeyPath, passphrase, ot
 }
 
 // dialClient 拨号 + 握手 + 认证 (带 30s 全程 deadline), 返回客户端与底层连接
-func dialClient(addr string, cfg *ssh.ClientConfig) (*ssh.Client, net.Conn, error) {
-	conn, err := net.DialTimeout("tcp", addr, 8*time.Second)
+// p 为代理配置; enabled 时经 HTTP CONNECT / SOCKS5 代理建立连接
+func dialClient(addr string, cfg *ssh.ClientConfig, p proxy) (*ssh.Client, net.Conn, error) {
+	var conn net.Conn
+	var err error
+	if p.enabled() {
+		conn, err = p.dial(addr, 8*time.Second)
+	} else {
+		conn, err = net.DialTimeout("tcp", addr, 8*time.Second)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -152,6 +159,15 @@ func connectOnce(cfg model.SshConfig) (*Session, error) {
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 	t0 := time.Now()
 
+	// 代理配置 (HTTP CONNECT / SOCKS5)
+	p := proxy{
+		Type:     cfg.ProxyType,
+		Host:     cfg.ProxyHost,
+		Port:     cfg.ProxyPort,
+		User:     cfg.ProxyUser,
+		Password: cfg.ProxyPassword,
+	}
+
 	var client *ssh.Client
 	var conn net.Conn
 	var jumpClient *ssh.Client
@@ -169,7 +185,7 @@ func connectOnce(cfg model.SshConfig) (*Session, error) {
 		}
 		jumpAddr := net.JoinHostPort(cfg.JumpHost, strconv.Itoa(cfg.JumpPort))
 		var jconn net.Conn
-		jumpClient, jconn, jerr = dialClient(jumpAddr, jumpCfg)
+		jumpClient, jconn, jerr = dialClient(jumpAddr, jumpCfg, p)
 		if jerr != nil {
 			logConnect("jump-fail", jerr.Error())
 			return nil, fmt.Errorf("跳板机连接失败: %v", jerr)
@@ -193,8 +209,8 @@ func connectOnce(cfg model.SshConfig) (*Session, error) {
 		}
 		client = ssh.NewClient(sshConn, chans, reqs)
 	} else {
-		// 直连: 手动拨号 + 全程 deadline (握手/认证/PTY/Shell 统一 30s)
-		conn, err = net.DialTimeout("tcp", addr, 8*time.Second)
+		// 直连 (或经代理): 手动拨号 + 全程 deadline (握手/认证/PTY/Shell 统一 30s)
+		conn, err = dialTCP(addr, p)
 		if err != nil {
 			logConnect("dial-fail", err.Error())
 			return nil, fmt.Errorf("连接失败: %v", err)
