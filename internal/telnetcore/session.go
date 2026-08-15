@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"ssh-terminal/internal/enc"
 	"ssh-terminal/internal/model"
 )
 
@@ -41,10 +42,11 @@ type Session struct {
 	cols      int
 	rxBytes   atomic.Int64
 	txBytes   atomic.Int64
+	encoding  string // 输出编码: auto / utf-8 / gbk (空=auto)
 }
 
 // Connect 建立 Telnet 连接
-func Connect(host string, port int) (*Session, error) {
+func Connect(host string, port int, encoding string) (*Session, error) {
 	if host == "" {
 		return nil, errors.New("host 不能为空")
 	}
@@ -54,18 +56,20 @@ func Connect(host string, port int) (*Session, error) {
 		return nil, fmt.Errorf("连接失败: %v", err)
 	}
 	s := &Session{
-		conn:   conn,
-		output: make(chan model.OutputMsg, 64),
-		done:   make(chan error, 1),
-		rows:   40,
-		cols:   120,
+		conn:     conn,
+		output:   make(chan model.OutputMsg, 64),
+		done:     make(chan error, 1),
+		rows:     40,
+		cols:     120,
+		encoding: encoding,
 	}
 	go s.pump()
 	return s, nil
 }
 
-// pump 读取数据, 处理 IAC 协商, 其余数据投递到输出流
+// pump 读取数据, 处理 IAC 协商, 其余数据按会话编码转码为 UTF-8 后投递
 func (s *Session) pump() {
+	conv := enc.NewConverter(s.encoding)
 	buf := make([]byte, 8192)
 	var leftover []byte
 	for {
@@ -79,7 +83,7 @@ func (s *Session) pump() {
 				leftover = rest // IAC 序列跨包, 与下一包拼接
 			}
 			if len(data) > 0 {
-				s.output <- model.OutputMsg{Data: string(data)}
+				s.output <- model.OutputMsg{Data: conv.Decode(data)}
 			}
 		}
 		if err != nil {
