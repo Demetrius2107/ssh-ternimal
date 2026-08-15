@@ -16,7 +16,7 @@ import (
 
 // Telnet IAC 命令
 const (
-	iac = 255 // IAC 开始符
+	iac  = 255 // IAC 开始符
 	dont = 254
 	do   = 253
 	wont = 252

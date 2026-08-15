@@ -1,9 +1,10 @@
 // knownhosts 主机密钥校验: known_hosts 文件管理 + 三种模式
 //
 // 模式 (SshConfig.HostKeyMode):
-//   off         不校验 (等同旧行为 InsecureIgnoreHostKey)
-//   accept-new  首次连接自动记录主机密钥, 密钥变更则拒绝 (默认)
-//   strict      首次连接返回 UnknownHostKeyError, 由前端确认后 AcceptHostKey 记录
+//
+//	off         不校验 (等同旧行为 InsecureIgnoreHostKey)
+//	accept-new  首次连接自动记录主机密钥, 密钥变更则拒绝 (默认)
+//	strict      首次连接返回 UnknownHostKeyError, 由前端确认后 AcceptHostKey 记录
 package sshcore
 
 import (
@@ -116,6 +117,10 @@ func appendKnownHostKey(host string, port int, key ssh.PublicKey) error {
 	defer knownHostsMu.Unlock()
 	path, err := KnownHostsPath()
 	if err != nil {
+		return err
+	}
+	// 目录可能不存在 (store 未初始化等场景), 确保可写
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
 	line := knownhosts.Line([]string{net.JoinHostPort(host, strconv.Itoa(port))}, key)

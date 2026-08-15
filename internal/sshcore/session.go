@@ -25,17 +25,17 @@ import (
 
 // Session 单个 SSH 会话
 type Session struct {
-	client     *ssh.Client
-	session    *ssh.Session
-	stdin      io.WriteCloser
-	sftpClient *sftp.Client
-	sftpMu     sync.Mutex
-	mu         sync.Mutex
-	closed     bool
-	output     chan model.OutputMsg
-	done       chan error
-	stop       chan struct{} // keepalive 停止信号
-	closeOnce  sync.Once
+	client      *ssh.Client
+	session     *ssh.Session
+	stdin       io.WriteCloser
+	sftpClient  *sftp.Client
+	sftpMu      sync.Mutex
+	mu          sync.Mutex
+	closed      bool
+	output      chan model.OutputMsg
+	done        chan error
+	stop        chan struct{} // keepalive 停止信号
+	closeOnce   sync.Once
 	rxBytes     atomic.Int64
 	txBytes     atomic.Int64
 	keepAliveMs atomic.Int64
