@@ -103,6 +103,14 @@ type AiDelta struct {
 	Text string `json:"text"`
 }
 
+// UpdateInfo 客户端更新信息 (CheckUpdate 返回)
+type UpdateInfo struct {
+	LatestVersion string `json:"latestVersion"` // 最新版本号, 如 v0.9.1
+	DownloadURL   string `json:"downloadUrl"`   // 安装包下载地址
+	Notes         string `json:"notes"`         // 更新说明 (发布说明)
+	HasUpdate     bool   `json:"hasUpdate"`     // 是否有新版本
+}
+
 // AuditEntry 会话审计条目 (操作留痕, 内网运维/审计场景)
 type AuditEntry struct {
 	ID        string `json:"id"`

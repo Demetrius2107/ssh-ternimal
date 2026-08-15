@@ -26,6 +26,14 @@ export function AiStatus() {
   return window['go']['main']['App']['AiStatus']();
 }
 
+export function ApplyUpdate(arg1, arg2) {
+  return window['go']['main']['App']['ApplyUpdate'](arg1, arg2);
+}
+
+export function CheckUpdate() {
+  return window['go']['main']['App']['CheckUpdate']();
+}
+
 export function ClearAudit() {
   return window['go']['main']['App']['ClearAudit']();
 }
@@ -40,6 +48,10 @@ export function DeleteSession(arg1) {
 
 export function DeleteSnippet(arg1) {
   return window['go']['main']['App']['DeleteSnippet'](arg1);
+}
+
+export function DownloadUpdate(arg1) {
+  return window['go']['main']['App']['DownloadUpdate'](arg1);
 }
 
 export function EditRemoteFile(arg1, arg2) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AiSetKey, AiConfigure, AiStatus } from '../wailsjs/go/main/App';
+import { AiSetKey, AiConfigure, AiStatus, CheckUpdate, DownloadUpdate, ApplyUpdate } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 import { THEMES, THEME_LIST, type ThemeName } from './themes';
 import { SHORTCUT_ACTIONS, loadShortcuts, saveShortcuts, defaultShortcuts, formatShortcut, isModifierOnly } from './shortcuts';
@@ -25,6 +25,100 @@ const FONT_OPTIONS: Array<[string, string]> = [
 ];
 
 type SectionId = 'appearance' | 'terminal' | 'shortcuts' | 'ai' | 'about';
+
+// AboutSection 关于与更新: 版本信息 + 检查更新/下载/应用
+function AboutSection() {
+    const [checking, setChecking] = useState(false);
+    const [downloading, setDownloading] = useState(false);
+    const [update, setUpdate] = useState<model.UpdateInfo | null>(null);
+    const [localPath, setLocalPath] = useState('');
+    const [msg, setMsg] = useState('');
+    const [err, setErr] = useState('');
+
+    async function check() {
+        setChecking(true);
+        setErr('');
+        setMsg('');
+        setUpdate(null);
+        setLocalPath('');
+        try {
+            const u = await CheckUpdate();
+            setUpdate(u);
+            if (!u.hasUpdate) setMsg('已是最新版本 ✅');
+        } catch (e: any) {
+            setErr(e?.message ?? '检查更新失败 (网络不可达?)');
+        } finally {
+            setChecking(false);
+        }
+    }
+
+    async function download() {
+        if (!update?.downloadUrl) {
+            setErr('没有可用的下载地址');
+            return;
+        }
+        setDownloading(true);
+        setErr('');
+        setMsg('');
+        try {
+            const p = await DownloadUpdate(update.downloadUrl);
+            setLocalPath(p);
+            setMsg('下载完成，可应用更新');
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        } finally {
+            setDownloading(false);
+        }
+    }
+
+    async function apply() {
+        if (!localPath) return;
+        try {
+            await ApplyUpdate(localPath, true);
+            setMsg('已启动安装程序，安装完成后将更新到新版本');
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        }
+    }
+
+    return (
+        <div className="sp-section">
+            <h2 className="sp-h2">关于</h2>
+            <div className="about-card">
+                <div className="about-logo">SSH</div>
+                <div className="about-name">ssh-terminal</div>
+                <div className="about-desc">本地优先的现代 SSH/Telnet 终端 · SFTP · 隧道 · AI 辅助 · 审计回放</div>
+                <div className="about-stack">Wails (Go) + React + TypeScript + xterm.js</div>
+                <div className="about-ver">v0.9.0 · 功能对标 Termius / XShell</div>
+            </div>
+
+            <div className="set-group">
+                <div className="set-label">软件更新</div>
+                <div className="upd-actions">
+                    <button className="set-save" onClick={check} disabled={checking || downloading}>
+                        {checking ? '检查中...' : '检查更新'}
+                    </button>
+                    {update?.hasUpdate && (
+                        <>
+                            <span className="upd-new">发现新版本 {update.latestVersion}</span>
+                            <button className="set-save" onClick={download} disabled={downloading || !!localPath}>
+                                {downloading ? '下载中...' : localPath ? '已下载' : '下载'}
+                            </button>
+                            {localPath && (
+                                <button className="set-save" onClick={apply}>
+                                    应用更新
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
+                {update?.notes && <div className="upd-notes">{update.notes}</div>}
+                {msg && <div className="tunnel-msg">{msg}</div>}
+                {err && <div className="error-box">{err}</div>}
+            </div>
+        </div>
+    );
+}
 
 const SECTIONS: Array<{ id: SectionId; label: string }> = [
     { id: 'appearance', label: '外观' },
@@ -300,18 +394,7 @@ export default function SettingsPage({ theme, onTheme, fontFamily, onFontFamily,
                 )}
 
                 {section === 'about' && (
-                    <div className="sp-section">
-                        <h2 className="sp-h2">关于</h2>
-                        <div className="about-card">
-                            <div className="about-logo">SSH</div>
-                            <div className="about-name">ssh-terminal</div>
-                            <div className="about-desc">
-                                本地优先的现代 SSH/Telnet 终端 · SFTP · 隧道 · AI 辅助 · 审计回放
-                            </div>
-                            <div className="about-stack">Wails (Go) + React + TypeScript + xterm.js</div>
-                            <div className="about-ver">v0.9 · 功能对标 Termius / XShell</div>
-                        </div>
-                    </div>
+                    <AboutSection />
                 )}
             </div>
         </div>

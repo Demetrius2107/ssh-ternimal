@@ -102,11 +102,17 @@ Section
     !insertmacro wails.associateFiles
     !insertmacro wails.associateCustomProtocols
 
+    ; Auto-start on boot: write current-user Run registry key (cleaned on uninstall)
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${INFO_PRODUCTNAME}" "$INSTDIR\${PRODUCT_EXECUTABLE}"
+
     !insertmacro wails.writeUninstaller
 SectionEnd
 
 Section "uninstall"
     !insertmacro wails.setShellContext
+
+    ; Clean up auto-start registry value
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${INFO_PRODUCTNAME}"
 
     RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
 

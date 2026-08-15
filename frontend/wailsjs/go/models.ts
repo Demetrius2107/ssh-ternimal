@@ -370,6 +370,24 @@ export namespace model {
 	        this.status = source["status"];
 	    }
 	}
+	export class UpdateInfo {
+	    latestVersion: string;
+	    downloadUrl: string;
+	    notes: string;
+	    hasUpdate: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.latestVersion = source["latestVersion"];
+	        this.downloadUrl = source["downloadUrl"];
+	        this.notes = source["notes"];
+	        this.hasUpdate = source["hasUpdate"];
+	    }
+	}
 
 }
 

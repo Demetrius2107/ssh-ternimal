@@ -14,6 +14,10 @@ export function AiSetKey(arg1:string):Promise<void>;
 
 export function AiStatus():Promise<model.AiStatus>;
 
+export function ApplyUpdate(arg1:string,arg2:boolean):Promise<void>;
+
+export function CheckUpdate():Promise<model.UpdateInfo>;
+
 export function ClearAudit():Promise<void>;
 
 export function Connect(arg1:model.SshConfig):Promise<number>;
@@ -21,6 +25,8 @@ export function Connect(arg1:model.SshConfig):Promise<number>;
 export function DeleteSession(arg1:string):Promise<void>;
 
 export function DeleteSnippet(arg1:string):Promise<void>;
+
+export function DownloadUpdate(arg1:string):Promise<string>;
 
 export function EditRemoteFile(arg1:number,arg2:string):Promise<void>;
 

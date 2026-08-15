@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -910,6 +912,103 @@ func (a *App) EditorSaveLocal(localPath, content string) error {
 	}
 	if err := os.WriteFile(localPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("保存本地文件失败: %v", err)
+	}
+	return nil
+}
+
+// ---------- 客户端更新 ----------
+
+// appVersion 当前版本号 (与 wails.json Info.productVersion 保持一致)
+const appVersion = "0.9.0"
+
+// githubLatestRelease 查询 GitHub 最新 Release 的 API 地址
+const githubLatestRelease = "https://api.github.com/repos/Demetrius2107/ssh-ternimal/releases/latest"
+
+// githubRelease GitHub API 响应结构 (仅解析需要的字段)
+type githubRelease struct {
+	TagName string `json:"tag_name"`
+	Body    string `json:"body"`
+	Assets  []struct {
+		Name               string `json:"name"`
+		BrowserDownloadURL string `json:"browser_download_url"`
+	} `json:"assets"`
+}
+
+// CheckUpdate 检查是否有新版本 (对比 GitHub 最新 Release)
+func (a *App) CheckUpdate() model.UpdateInfo {
+	info := model.UpdateInfo{LatestVersion: "v" + appVersion, HasUpdate: false}
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(githubLatestRelease)
+	if err != nil {
+		return info // 网络不可达: 返回无更新 (前端可提示检查失败由调用方感知)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return info
+	}
+	var rel githubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+		return info
+	}
+	info.LatestVersion = rel.TagName
+	info.Notes = strings.TrimSpace(rel.Body)
+	// 取第一个可下载的 exe 资产
+	for _, as := range rel.Assets {
+		if strings.HasSuffix(as.Name, ".exe") && as.BrowserDownloadURL != "" {
+			info.DownloadURL = as.BrowserDownloadURL
+			break
+		}
+	}
+	// 版本比较: 本地 v0.9.0 vs 远程 v0.9.1 → 有更新
+	if !strings.EqualFold(rel.TagName, "v"+appVersion) && rel.TagName != "" {
+		info.HasUpdate = true
+	}
+	return info
+}
+
+// DownloadUpdate 下载最新安装包到临时目录, 返回本地路径
+func (a *App) DownloadUpdate(downloadURL string) (string, error) {
+	if downloadURL == "" {
+		return "", errors.New("下载地址为空")
+	}
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Get(downloadURL)
+	if err != nil {
+		return "", fmt.Errorf("下载失败: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("下载失败: HTTP %d", resp.StatusCode)
+	}
+	// 临时文件: ssh-terminal-update-<timestamp>.exe
+	name := fmt.Sprintf("ssh-terminal-update-%d.exe", time.Now().Unix())
+	dst := filepath.Join(os.TempDir(), name)
+	f, err := os.Create(dst)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return "", fmt.Errorf("写入文件失败: %v", err)
+	}
+	return dst, nil
+}
+
+// ApplyUpdate 运行下载好的安装包进行更新 (NSIS 安装程序自动替换, 支持 /S 静默)
+func (a *App) ApplyUpdate(localPath string, silent bool) error {
+	if localPath == "" {
+		return errors.New("安装包路径为空")
+	}
+	if _, err := os.Stat(localPath); err != nil {
+		return fmt.Errorf("安装包不存在: %v", err)
+	}
+	args := []string{localPath}
+	if silent {
+		args = append(args, "/S")
+	}
+	cmd := exec.Command(args[0], args[1:]...)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("启动安装程序失败: %v", err)
 	}
 	return nil
 }
