@@ -6,6 +6,7 @@ import { SshSend, SshResize, ListSnippets } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { THEMES, type ThemeName } from './themes';
+import { loadShortcuts, matchShortcut } from './shortcuts';
 import '@xterm/xterm/css/xterm.css';
 
 export type { ThemeName } from './themes';
@@ -132,11 +133,11 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
         term.options.fontSize = fontSize;
     }, [fontFamily, fontSize]);
 
-    // Ctrl+F 只对激活会话生效
+    // 终端查找快捷键 (跟随用户配置, 默认 Ctrl+F), 只对激活会话生效
     useEffect(() => {
         if (!active) return;
         const onKey = (e: KeyboardEvent) => {
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+            if (matchShortcut(e, 'terminalFind', loadShortcuts())) {
                 e.preventDefault();
                 setShowFind(true);
                 setTimeout(() => inputRef.current?.focus(), 0);

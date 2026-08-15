@@ -10,8 +10,10 @@ import MonitorPanel from './MonitorPanel';
 import SnippetPanel from './SnippetPanel';
 import LogPanel from './LogPanel';
 import SettingsPanel from './SettingsPanel';
+import SettingsPage from './SettingsPage';
 import AuditPanel from './AuditPanel';
 import { THEMES, THEME_LIST, type ThemeName } from './themes';
+import { loadShortcuts, matchShortcut } from './shortcuts';
 import './App.css';
 
 interface OpenSession {
@@ -107,6 +109,7 @@ function App() {
     const [showMonitor, setShowMonitor] = useState(false);
     const [showSnippets, setShowSnippets] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    const [settingsPage, setSettingsPage] = useState(false); // 独立设置页面 (非弹窗)
     const [showAudit, setShowAudit] = useState(false);
     const [monitorPage, setMonitorPage] = useState(false); // 独立监控页面 (非弹窗)
     const [splitMode, setSplitMode] = useState(false);
@@ -159,13 +162,40 @@ function App() {
         return EventsOn('ssh-exit', onExit);
     }, []);
 
-    // ESC 关闭任意打开的功能模态框 (连接/历史/隧道/监控/片段/设置/审计) 或返回独立监控页
+    // 全局快捷键: 按用户配置执行动作 (新建连接/历史/隧道/监控/片段/审计/设置/分屏)
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            const map = loadShortcuts();
+            const dispatch: Array<[string, () => void]> = [
+                ['openConnect', () => setShowConnect(true)],
+                ['openHistory', () => setShowHistory(true)],
+                ['openTunnel', () => setShowTunnel(true)],
+                ['openMonitor', () => setShowMonitor(true)],
+                ['openSnippets', () => setShowSnippets(true)],
+                ['openAudit', () => setShowAudit(true)],
+                ['openSettings', () => setSettingsPage(true)],
+                ['splitMode', () => { if (openSessions.length > 1) setSplitMode((v) => !v); }],
+            ];
+            for (const [actionId, fn] of dispatch) {
+                if (matchShortcut(e, actionId, map)) {
+                    e.preventDefault();
+                    fn();
+                    return;
+                }
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [openSessions.length]);
+
+    // ESC 关闭任意打开的功能模态框 (连接/历史/隧道/监控/片段/设置/审计) 或返回独立页面
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key !== 'Escape') return;
-            if (monitorPage) {
+            if (monitorPage || settingsPage) {
                 e.preventDefault();
                 setMonitorPage(false);
+                setSettingsPage(false);
                 return;
             }
             if (showConnect || showHistory || showTunnel || showMonitor || showSnippets || showSettings || showAudit) {
@@ -181,7 +211,7 @@ function App() {
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [showConnect, showHistory, showTunnel, showMonitor, showSnippets, showSettings, showAudit, monitorPage]);
+    }, [showConnect, showHistory, showTunnel, showMonitor, showSnippets, showSettings, showAudit, monitorPage, settingsPage]);
 
     function closeSession(id: number) {
         SshClose(id);
@@ -237,7 +267,7 @@ function App() {
                 <button className="btn-hist" onClick={pickBackground} title="选择自定义背景图片">
                     {Icon.image} 背景
                 </button>
-                <button className="btn-hist btn-settings" onClick={() => setShowSettings(true)} title="设置">
+                <button className="btn-hist btn-settings" onClick={() => setSettingsPage(true)} title="设置">
                     {Icon.gear}
                 </button>
                 {openSessions.length > 1 && (
@@ -270,6 +300,17 @@ function App() {
                 ))}
             </div>
             <div className={`session-body ${splitMode ? 'split' : ''}`}>
+                {settingsPage && (
+                    <SettingsPage
+                        theme={theme}
+                        onTheme={setTheme}
+                        fontFamily={fontFamily}
+                        onFontFamily={setFontFamily}
+                        fontSize={fontSize}
+                        onFontSize={setFontSize}
+                        onClose={() => setSettingsPage(false)}
+                    />
+                )}
                 {monitorPage && openSessions.length > 0 && (
                     <div className="monitor-page">
                         <div className="monitor-page-bar">
@@ -320,7 +361,7 @@ function App() {
                             fontFamily={fontFamily}
                             fontSize={fontSize}
                             onClose={() => closeSession(s.id)}
-                            onOpenSettings={() => setShowSettings(true)}
+                            onOpenSettings={() => setSettingsPage(true)}
                         />
                     </div>
                 ))}
