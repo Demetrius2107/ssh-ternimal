@@ -24,6 +24,12 @@ export function DeleteSnippet(arg1:string):Promise<void>;
 
 export function EditRemoteFile(arg1:number,arg2:string):Promise<void>;
 
+export function EditorLoadRemote(arg1:number,arg2:string):Promise<string>;
+
+export function EditorSaveLocal(arg1:string,arg2:string):Promise<void>;
+
+export function EditorSaveRemote(arg1:number,arg2:string,arg3:string):Promise<void>;
+
 export function GetDiskUsage(arg1:number):Promise<Array<model.DiskUsage>>;
 
 export function GetOpenPorts(arg1:number):Promise<Array<model.PortInfo>>;

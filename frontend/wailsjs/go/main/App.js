@@ -46,6 +46,18 @@ export function EditRemoteFile(arg1, arg2) {
   return window['go']['main']['App']['EditRemoteFile'](arg1, arg2);
 }
 
+export function EditorLoadRemote(arg1, arg2) {
+  return window['go']['main']['App']['EditorLoadRemote'](arg1, arg2);
+}
+
+export function EditorSaveLocal(arg1, arg2) {
+  return window['go']['main']['App']['EditorSaveLocal'](arg1, arg2);
+}
+
+export function EditorSaveRemote(arg1, arg2, arg3) {
+  return window['go']['main']['App']['EditorSaveRemote'](arg1, arg2, arg3);
+}
+
 export function GetDiskUsage(arg1) {
   return window['go']['main']['App']['GetDiskUsage'](arg1);
 }

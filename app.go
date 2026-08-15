@@ -874,6 +874,46 @@ func (a *App) EditRemoteFile(id uint64, remotePath string) error {
 	return nil
 }
 
+// EditorLoadRemote 内置编辑器: 读取远程文件内容 (限 4MB 防止超大文件卡死前端)
+func (a *App) EditorLoadRemote(id uint64, remotePath string) (string, error) {
+	sess, err := a.getSSH(id)
+	if err != nil {
+		return "", err
+	}
+	data, err := sess.FetchFile(remotePath)
+	if err != nil {
+		return "", fmt.Errorf("读取远程文件失败: %v", err)
+	}
+	const max = 4 * 1024 * 1024
+	if len(data) > max {
+		data = data[:max]
+	}
+	return string(data), nil
+}
+
+// EditorSaveRemote 内置编辑器: 将内容写回远程文件
+func (a *App) EditorSaveRemote(id uint64, remotePath, content string) error {
+	sess, err := a.getSSH(id)
+	if err != nil {
+		return err
+	}
+	if err := sess.PutFile(remotePath, []byte(content)); err != nil {
+		return fmt.Errorf("写回远程文件失败: %v", err)
+	}
+	return nil
+}
+
+// EditorSaveLocal 内置编辑器: 将内容保存到本地文件
+func (a *App) EditorSaveLocal(localPath, content string) error {
+	if localPath == "" {
+		return errors.New("本地路径不能为空")
+	}
+	if err := os.WriteFile(localPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("保存本地文件失败: %v", err)
+	}
+	return nil
+}
+
 // ---------- 本地文件 ----------
 
 // LocalListDir 列出本地目录
