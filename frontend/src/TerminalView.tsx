@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
-import { SshSend, SshResize } from '../wailsjs/go/main/App';
+import { SshSend, SshResize, ListSnippets } from '../wailsjs/go/main/App';
+import { model } from '../wailsjs/go/models';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { THEMES, type ThemeName } from './themes';
 import '@xterm/xterm/css/xterm.css';
@@ -25,8 +26,26 @@ interface SshReconnect {
     max: number;
 }
 
+// ---------- 日志关键字着色 (纯文本日志无 ANSI 色码时生效) ----------
+// 已含 ANSI 转义码的内容跳过, 避免双重着色破坏转义序列
+const LOG_KEYWORDS: Array<[RegExp, string]> = [
+    [/\b(ERROR|FATAL|FAILED|FAIL|CRITICAL|PANIC|Exception|异常|错误|失败|致命|超时)\b/g, '\x1b[31m$1\x1b[0m'], // 红
+    [/\b(WARN|WARNING|警告|注意|小心|DENIED|拒绝)\b/g, '\x1b[33m$1\x1b[0m'], // 黄
+    [/\b(SUCCESS|OK|DONE|成功|完成|通过)\b/g, '\x1b[32m$1\x1b[0m'], // 绿
+    [/\b(INFO|信息|调试|DEBUG)\b/g, '\x1b[36m$1\x1b[0m'], // 青
+];
+
+function colorizeLog(data: string): string {
+    if (data.indexOf('\x1b') >= 0) return data; // 已有 ANSI 色码, 原样透传
+    let out = data;
+    for (const [re, wrap] of LOG_KEYWORDS) {
+        out = out.replace(re, wrap);
+    }
+    return out;
+}
+
 // TerminalView 终端组件: 输出渲染/输入转发/尺寸同步/查找/右键菜单/主题实时切换
-export default function TerminalView({ sessionId, active, theme }: { sessionId: number; active: boolean; theme: ThemeName }) {
+export default function TerminalView({ sessionId, active, theme, fontFamily, fontSize }: { sessionId: number; active: boolean; theme: ThemeName; fontFamily: string; fontSize: number }) {
     const containerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const termRef = useRef<Terminal | null>(null);
@@ -34,11 +53,20 @@ export default function TerminalView({ sessionId, active, theme }: { sessionId: 
     const [exitMsg, setExitMsg] = useState('');
     const [showFind, setShowFind] = useState(false);
     const [ctx, setCtx] = useState<{ x: number; y: number } | null>(null);
+    const [snippets, setSnippets] = useState<model.Snippet[]>([]);
+
+    // 右键打开时加载命令片段 (供快速发送)
+    useEffect(() => {
+        if (!ctx) return;
+        ListSnippets()
+            .then((s) => setSnippets(s ?? []))
+            .catch(() => setSnippets([]));
+    }, [ctx]);
 
     useEffect(() => {
         const term = new Terminal({
-            fontFamily: 'Consolas, "Courier New", monospace',
-            fontSize: 14,
+            fontFamily,
+            fontSize,
             cursorBlink: true,
             scrollback: 10000,
             // 双击选中单词是 xterm 内建默认行为
@@ -55,7 +83,7 @@ export default function TerminalView({ sessionId, active, theme }: { sessionId: 
         searchAddonRef.current = search;
 
         const onOutput = (e: SshOutput) => {
-            if (e.sessionId === sessionId) term.write(e.data);
+            if (e.sessionId === sessionId) term.write(colorizeLog(e.data));
         };
         const onExit = (e: SshExit) => {
             if (e.sessionId === sessionId) setExitMsg(e.error ? `会话已退出: ${e.error}` : '会话已结束');
@@ -96,6 +124,14 @@ export default function TerminalView({ sessionId, active, theme }: { sessionId: 
         if (termRef.current) termRef.current.options.theme = THEMES[theme].xterm;
     }, [theme]);
 
+    // 字体/字号实时切换 (无需重启)
+    useEffect(() => {
+        const term = termRef.current;
+        if (!term) return;
+        term.options.fontFamily = fontFamily;
+        term.options.fontSize = fontSize;
+    }, [fontFamily, fontSize]);
+
     // Ctrl+F 只对激活会话生效
     useEffect(() => {
         if (!active) return;
@@ -110,15 +146,20 @@ export default function TerminalView({ sessionId, active, theme }: { sessionId: 
         return () => window.removeEventListener('keydown', onKey);
     }, [active]);
 
-    // 右键菜单: 点击别处/失焦关闭
+    // 右键菜单: 点击别处/失焦/ESC 关闭
     useEffect(() => {
         if (!ctx) return;
         const close = () => setCtx(null);
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') close();
+        };
         window.addEventListener('click', close);
         window.addEventListener('blur', close);
+        window.addEventListener('keydown', onKey);
         return () => {
             window.removeEventListener('click', close);
             window.removeEventListener('blur', close);
+            window.removeEventListener('keydown', onKey);
         };
     }, [ctx]);
 
@@ -160,6 +201,12 @@ export default function TerminalView({ sessionId, active, theme }: { sessionId: 
         setCtx(null);
     }
 
+    // 发送命令片段到当前会话 (自动补回车执行)
+    function sendSnippet(cmd: string) {
+        SshSend(sessionId, cmd + '\r');
+        setCtx(null);
+    }
+
     return (
         <div className="terminal-layout">
             <div className="terminal-toolbar">
@@ -198,6 +245,17 @@ export default function TerminalView({ sessionId, active, theme }: { sessionId: 
                     <button onClick={copySelection}>复制</button>
                     <button onClick={paste}>粘贴</button>
                     <button onClick={selectAll}>全选</button>
+                    {snippets.length > 0 && (
+                        <>
+                            <div className="ctx-sep" />
+                            <div className="ctx-label">发送片段</div>
+                            {snippets.map((s) => (
+                                <button key={s.id} onClick={() => sendSnippet(s.command)} title={s.command}>
+                                    {s.name}
+                                </button>
+                            ))}
+                        </>
+                    )}
                 </div>
             )}
         </div>

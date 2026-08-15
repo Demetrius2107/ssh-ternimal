@@ -19,6 +19,7 @@ import (
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 
+	"ssh-terminal/internal/enc"
 	"ssh-terminal/internal/model"
 )
 
@@ -39,6 +40,7 @@ type Session struct {
 	txBytes     atomic.Int64
 	keepAliveMs atomic.Int64
 	jumpClient  *ssh.Client // 跳板机连接 (需保持存活, 会话关闭时一并关闭)
+	encoding    string      // 输出编码: auto / utf-8 / gbk (空=auto)
 }
 
 // Connect 建立连接、认证并打开远程 PTY shell; 对瞬时错误自动重试一次
@@ -52,6 +54,10 @@ func Connect(cfg model.SshConfig) (*Session, error) {
 		lastErr = err
 		if isAuthError(err) {
 			return nil, err // 认证失败 (密码/私钥错误) 不重试
+		}
+		var uke *UnknownHostKeyError
+		if errors.As(err, &uke) {
+			return nil, err // 主机密钥未验证, 交上层处理, 不重试
 		}
 		logConnect("retry", fmt.Sprintf("attempt %d failed: %v", attempt, err))
 		if attempt < 2 {
@@ -133,10 +139,14 @@ func connectOnce(cfg model.SshConfig) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	hostKeyCb, err := HostKeyCallback(cfg.HostKeyMode)
+	if err != nil {
+		return nil, err
+	}
 	clientCfg := &ssh.ClientConfig{
 		User:            cfg.Username,
 		Auth:            methods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: known_hosts 校验
+		HostKeyCallback: hostKeyCb,
 		Timeout:         15 * time.Second,
 	}
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
@@ -154,7 +164,7 @@ func connectOnce(cfg model.SshConfig) (*Session, error) {
 		jumpCfg := &ssh.ClientConfig{
 			User:            cfg.JumpUser,
 			Auth:            jumpMethods,
-			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+			HostKeyCallback: hostKeyCb,
 			Timeout:         15 * time.Second,
 		}
 		jumpAddr := net.JoinHostPort(cfg.JumpHost, strconv.Itoa(cfg.JumpPort))
@@ -175,6 +185,10 @@ func connectOnce(cfg model.SshConfig) (*Session, error) {
 			jumpClient.Close()
 			conn.Close()
 			logConnect("handshake+auth-fail", herr.Error())
+			var uke *UnknownHostKeyError
+			if errors.As(herr, &uke) {
+				return nil, uke
+			}
 			return nil, fmt.Errorf("经跳板握手失败: %v", herr)
 		}
 		client = ssh.NewClient(sshConn, chans, reqs)
@@ -191,6 +205,10 @@ func connectOnce(cfg model.SshConfig) (*Session, error) {
 		if herr != nil {
 			conn.Close()
 			logConnect("handshake+auth-fail", herr.Error())
+			var uke *UnknownHostKeyError
+			if errors.As(herr, &uke) {
+				return nil, uke
+			}
 			if isAuthError(herr) {
 				return nil, fmt.Errorf("认证失败: %v", herr)
 			}
@@ -238,12 +256,13 @@ func connectOnce(cfg model.SshConfig) (*Session, error) {
 	_ = conn.SetDeadline(time.Time{})
 
 	s := &Session{
-		client:  client,
-		session: sess,
-		stdin:   stdin,
-		output:  make(chan model.OutputMsg, 64),
-		done:    make(chan error, 1),
-		stop:    make(chan struct{}),
+		client:   client,
+		session:  sess,
+		stdin:    stdin,
+		encoding: cfg.Encoding,
+		output:   make(chan model.OutputMsg, 64),
+		done:     make(chan error, 1),
+		stop:     make(chan struct{}),
 	}
 	if jumpClient != nil {
 		s.jumpClient = jumpClient
@@ -297,14 +316,15 @@ func (s *Session) keepAlive() {
 	}
 }
 
-// pump 读取输出并投递到 channel
+// pump 读取输出, 按会话编码转码为 UTF-8 后投递到 channel
 func (s *Session) pump(r io.Reader) {
+	conv := enc.NewConverter(s.encoding)
 	buf := make([]byte, 8192)
 	for {
 		n, err := r.Read(buf)
 		if n > 0 {
 			s.rxBytes.Add(int64(n))
-			s.output <- model.OutputMsg{Data: string(buf[:n])}
+			s.output <- model.OutputMsg{Data: conv.Decode(buf[:n])}
 		}
 		if err != nil {
 			return
@@ -521,6 +541,35 @@ func (s *Session) Chmod(p string, mode uint32) error {
 		return err
 	}
 	return c.Chmod(p, os.FileMode(mode))
+}
+
+// FetchFile 下载远程单个文件内容 (远程编辑用)
+func (s *Session) FetchFile(remotePath string) ([]byte, error) {
+	c, err := s.SFTP()
+	if err != nil {
+		return nil, err
+	}
+	remote, err := c.Open(remotePath)
+	if err != nil {
+		return nil, err
+	}
+	defer remote.Close()
+	return io.ReadAll(remote)
+}
+
+// PutFile 上传内容覆盖远程文件 (远程编辑回传用)
+func (s *Session) PutFile(remotePath string, data []byte) error {
+	c, err := s.SFTP()
+	if err != nil {
+		return err
+	}
+	remote, err := c.OpenFile(remotePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	if err != nil {
+		return err
+	}
+	defer remote.Close()
+	_, err = remote.Write(data)
+	return err
 }
 
 // sortEntries 目录在前, 名称字典序 (不区分大小写)

@@ -15,6 +15,31 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+/* 自定义背景图片 (--bg-image 由 App.tsx 设置, none=未设置) */
+body {
+    background-image: var(--bg-image);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}
+
+/* 背景图片暗色遮罩, 保证内容可读 (body.has-bg 由 App.tsx 控制) */
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: rgba(10, 12, 16, 0.55);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+body.has-bg::before {
+    opacity: 1;
+}
+
 * {
     box-sizing: border-box;
 }

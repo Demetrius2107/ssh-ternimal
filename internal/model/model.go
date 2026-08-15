@@ -11,7 +11,9 @@ type SshConfig struct {
 	PrivateKey     string `json:"privateKey"`     // 私钥 PEM 内容
 	PrivateKeyPath string `json:"privateKeyPath"` // 私钥文件路径 (UI 选择后由后端读取)
 	Passphrase     string `json:"passphrase"`
-	OTP            string `json:"otp"` // 双因素验证码 (可选, keyboard-interactive 应答)
+	OTP            string `json:"otp"`         // 双因素验证码 (可选, keyboard-interactive 应答)
+	Encoding       string `json:"encoding"`    // 输出编码: auto / utf-8 / gbk (空=auto)
+	HostKeyMode    string `json:"hostKeyMode"` // 主机密钥校验: off / accept-new / strict (空=accept-new)
 
 	// 跳板机 (ProxyJump, 可选)
 	JumpHost           string `json:"jumpHost"`
@@ -50,11 +52,14 @@ type TransferTask struct {
 
 // StoredSession 保存的会话配置 (不含密码, 密码存系统凭据库)
 type StoredSession struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Username string `json:"username"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Username    string `json:"username"`
+	Encoding    string `json:"encoding"`    // 输出编码: auto / utf-8 / gbk (空=auto)
+	HostKeyMode string `json:"hostKeyMode"` // 主机密钥校验: off / accept-new / strict (空=accept-new)
+	Group       string `json:"group"`       // 分组名 (空=未分组)
 }
 
 // HistoryEntry 历史记录条目
@@ -63,6 +68,35 @@ type HistoryEntry struct {
 	Path    string `json:"path"`
 	Size    int64  `json:"size"`
 	ModTime string `json:"modTime"`
+}
+
+// HistoryMatch 历史检索命中结果
+type HistoryMatch struct {
+	Name    string `json:"name"`    // 文件名 (含时间戳前缀)
+	Path    string `json:"path"`    // 完整路径 (回放/查看用)
+	Count   int    `json:"count"`   // 命中行数
+	Preview string `json:"preview"` // 首个命中行内容
+}
+
+// AiStatus AI 配置与用量状态 (设置面板展示)
+type AiStatus struct {
+	Provider      string `json:"provider"`      // deepseek / ollama
+	Model         string `json:"model"`         // 当前模型档位
+	MonthlyLimit  int64  `json:"monthlyLimit"`  // 月度 token 限额
+	MonthUsage    int64  `json:"monthUsage"`    // 当月已用 token
+	KeyConfigured bool   `json:"keyConfigured"` // DeepSeek API Key 是否已配置
+}
+
+// AiDelta AI 流式输出事件负载
+type AiDelta struct {
+	Text string `json:"text"`
+}
+
+// Snippet 命令片段 (快捷命令)
+type Snippet struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Command string `json:"command"`
 }
 
 // Tunnel SSH 端口转发 (隧道)

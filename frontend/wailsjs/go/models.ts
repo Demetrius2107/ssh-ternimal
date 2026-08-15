@@ -1,5 +1,25 @@
 export namespace model {
 	
+	export class AiStatus {
+	    provider: string;
+	    model: string;
+	    monthlyLimit: number;
+	    monthUsage: number;
+	    keyConfigured: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AiStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider = source["provider"];
+	        this.model = source["model"];
+	        this.monthlyLimit = source["monthlyLimit"];
+	        this.monthUsage = source["monthUsage"];
+	        this.keyConfigured = source["keyConfigured"];
+	    }
+	}
 	export class FileEntry {
 	    name: string;
 	    path: string;
@@ -40,6 +60,24 @@ export namespace model {
 	        this.modTime = source["modTime"];
 	    }
 	}
+	export class HistoryMatch {
+	    name: string;
+	    path: string;
+	    count: number;
+	    preview: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HistoryMatch(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.count = source["count"];
+	        this.preview = source["preview"];
+	    }
+	}
 	export class Metrics {
 	    bytesIn: number;
 	    bytesOut: number;
@@ -56,6 +94,22 @@ export namespace model {
 	        this.keepAliveMs = source["keepAliveMs"];
 	    }
 	}
+	export class Snippet {
+	    id: string;
+	    name: string;
+	    command: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Snippet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.command = source["command"];
+	    }
+	}
 	export class SshConfig {
 	    protocol: string;
 	    host: string;
@@ -66,6 +120,8 @@ export namespace model {
 	    privateKeyPath: string;
 	    passphrase: string;
 	    otp: string;
+	    encoding: string;
+	    hostKeyMode: string;
 	    jumpHost: string;
 	    jumpPort: number;
 	    jumpUser: string;
@@ -88,6 +144,8 @@ export namespace model {
 	        this.privateKeyPath = source["privateKeyPath"];
 	        this.passphrase = source["passphrase"];
 	        this.otp = source["otp"];
+	        this.encoding = source["encoding"];
+	        this.hostKeyMode = source["hostKeyMode"];
 	        this.jumpHost = source["jumpHost"];
 	        this.jumpPort = source["jumpPort"];
 	        this.jumpUser = source["jumpUser"];
@@ -102,6 +160,9 @@ export namespace model {
 	    host: string;
 	    port: number;
 	    username: string;
+	    encoding: string;
+	    hostKeyMode: string;
+	    group: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new StoredSession(source);
@@ -114,6 +175,9 @@ export namespace model {
 	        this.host = source["host"];
 	        this.port = source["port"];
 	        this.username = source["username"];
+	        this.encoding = source["encoding"];
+	        this.hostKeyMode = source["hostKeyMode"];
+	        this.group = source["group"];
 	    }
 	}
 	export class SysMetrics {

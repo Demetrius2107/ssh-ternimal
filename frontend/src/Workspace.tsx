@@ -3,11 +3,14 @@ import { GetSessionMetrics, SshKeepAlive } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 import TerminalView, { ThemeName } from './TerminalView';
 import FilePanel from './FilePanel';
+import AiPanel from './AiPanel';
 
 interface Props {
     sessionId: number;
     active: boolean;
     theme: ThemeName;
+    fontFamily: string;
+    fontSize: number;
     onClose: () => void;
 }
 
@@ -25,8 +28,8 @@ function fmtRate(bps: number): string {
 }
 
 // Workspace 单个会话的工作区: 终端/文件 子标签页 + 底部网络状态栏
-export default function Workspace({ sessionId, active, theme, onClose }: Props) {
-    const [activeTab, setActiveTab] = useState<'terminal' | 'files'>('terminal');
+export default function Workspace({ sessionId, active, theme, fontFamily, fontSize, onClose }: Props) {
+    const [activeTab, setActiveTab] = useState<'terminal' | 'files' | 'ai'>('terminal');
     const [metrics, setMetrics] = useState<model.Metrics | null>(null);
     const [rate, setRate] = useState({ in: 0, out: 0 });
     const [duration, setDuration] = useState(0);
@@ -77,16 +80,22 @@ export default function Workspace({ sessionId, active, theme, onClose }: Props) 
                 <button className={activeTab === 'files' ? 'tab active' : 'tab'} onClick={() => setActiveTab('files')}>
                     文件
                 </button>
+                <button className={activeTab === 'ai' ? 'tab active' : 'tab'} onClick={() => setActiveTab('ai')}>
+                    AI
+                </button>
                 <span className="tab-spacer" />
                 <button className="tab-disconnect" onClick={onClose}>
                     断开
                 </button>
             </div>
             <div className={`tab-pane ${activeTab === 'terminal' ? '' : 'hidden'}`}>
-                <TerminalView sessionId={sessionId} active={active} theme={theme} />
+                <TerminalView sessionId={sessionId} active={active} theme={theme} fontFamily={fontFamily} fontSize={fontSize} />
             </div>
             <div className={`tab-pane ${activeTab === 'files' ? '' : 'hidden'}`}>
                 <FilePanel sessionId={sessionId} />
+            </div>
+            <div className={`tab-pane ${activeTab === 'ai' ? '' : 'hidden'}`}>
+                <AiPanel sessionId={sessionId} />
             </div>
             <div className="status-bar">
                 <span className="sb-dot" />

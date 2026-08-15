@@ -18,6 +18,8 @@ import (
 
 const (
 	bucketName     = "sessions"
+	snippetBucket  = "snippets"
+	aiUsageBucket  = "ai_usage"
 	keyringService = "ssh-terminal"
 )
 
@@ -42,6 +44,14 @@ func Open() (*Store, error) {
 	}
 	if err := db.Update(func(tx *bbolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte(bucketName))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte(snippetBucket))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte(aiUsageBucket))
 		return err
 	}); err != nil {
 		db.Close()
@@ -117,6 +127,97 @@ func (s *Store) Load(id string) (model.StoredSession, string, error) {
 	}
 	pw, _ := keyring.Get(keyringService, id)
 	return sess, pw, nil
+}
+
+// MoveGroup 修改会话所属分组
+func (s *Store) MoveGroup(id, group string) error {
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(bucketName))
+		v := b.Get([]byte(id))
+		if v == nil {
+			return errors.New("会话不存在")
+		}
+		var sess model.StoredSession
+		if err := json.Unmarshal(v, &sess); err != nil {
+			return err
+		}
+		sess.Group = group
+		data, err := json.Marshal(sess)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(id), data)
+	})
+}
+
+// ---------- 命令片段 (Snippets) ----------
+
+// SaveSnippet 保存或更新命令片段; ID 为空时自动生成, 返回 ID
+func (s *Store) SaveSnippet(sn model.Snippet) (string, error) {
+	if sn.ID == "" {
+		sn.ID = newID()
+	}
+	data, err := json.Marshal(sn)
+	if err != nil {
+		return "", err
+	}
+	err = s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(snippetBucket)).Put([]byte(sn.ID), data)
+	})
+	return sn.ID, err
+}
+
+// ListSnippets 列出全部命令片段 (空库返回空切片而非 nil)
+func (s *Store) ListSnippets() ([]model.Snippet, error) {
+	out := []model.Snippet{}
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(snippetBucket)).ForEach(func(k, v []byte) error {
+			var sn model.Snippet
+			if err := json.Unmarshal(v, &sn); err == nil {
+				out = append(out, sn)
+			}
+			return nil
+		})
+	})
+	return out, err
+}
+
+// DeleteSnippet 删除命令片段
+func (s *Store) DeleteSnippet(id string) error {
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(snippetBucket)).Delete([]byte(id))
+	})
+}
+
+// ---------- AI 用量统计 (成本控制, 月度限额) ----------
+
+// AddAIUsage 累计当月 AI token 用量; month 形如 "2026-08"
+func (s *Store) AddAIUsage(month string, tokens int64) error {
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(aiUsageBucket))
+		var cur int64
+		if v := b.Get([]byte(month)); v != nil {
+			_ = json.Unmarshal(v, &cur)
+		}
+		cur += tokens
+		data, err := json.Marshal(cur)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(month), data)
+	})
+}
+
+// GetAIUsage 读取当月已用 token 数 (无记录返回 0)
+func (s *Store) GetAIUsage(month string) (int64, error) {
+	var cur int64
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		if v := tx.Bucket([]byte(aiUsageBucket)).Get([]byte(month)); v != nil {
+			return json.Unmarshal(v, &cur)
+		}
+		return nil
+	})
+	return cur, err
 }
 
 // newID 生成 16 位十六进制会话 ID

@@ -7,6 +7,7 @@ import {
     SftpRename,
     SftpUpload,
     SftpDownload,
+    EditRemoteFile,
     LocalListDir,
     LocalParent,
     LocalMkdir,
@@ -200,6 +201,22 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
         }
     }
 
+    // 远程编辑: 后端下载到临时文件 → 系统编辑器打开 → 关闭后自动回传
+    async function editRemote() {
+        if (!selRemote || selRemote.isDir) {
+            setError('请先在右侧选中远程文件');
+            return;
+        }
+        try {
+            setError('远程编辑: 已打开编辑器, 保存并关闭后自动回传…');
+            await EditRemoteFile(sessionId, selRemote.path);
+            setError('远程编辑: 已回传 ✅');
+            loadRemote(remoteDir);
+        } catch (e: any) {
+            setError(`远程编辑: ${e?.message ?? e}`);
+        }
+    }
+
     const transferList = Object.values(transfers);
 
     return (
@@ -251,6 +268,9 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
                         <button onClick={mkdirRemote}>新建目录</button>
                         <button onClick={deleteRemote} disabled={!selRemote}>删除</button>
                         <button onClick={renameRemote} disabled={!selRemote}>重命名</button>
+                        <button onClick={editRemote} disabled={!selRemote || selRemote.isDir} title="下载到本地, 用系统编辑器打开, 关闭后自动回传">
+                            编辑
+                        </button>
                         <button onClick={loadRemote.bind(null, remoteDir)}>刷新</button>
                     </div>
                     <div className="file-list">

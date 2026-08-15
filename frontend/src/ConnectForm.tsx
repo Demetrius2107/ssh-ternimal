@@ -3,10 +3,13 @@ import {
     Connect,
     SaveSession,
     ListSessions,
+    ListGroups,
     DeleteSession,
     LoadSession,
     PickFile,
     LaunchRdp,
+    AcceptHostKey,
+    MoveSession,
 } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 
@@ -26,6 +29,8 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
     const [passphrase, setPassphrase] = useState('');
     const [protocol, setProtocol] = useState<'ssh' | 'telnet'>('ssh');
     const [otp, setOtp] = useState('');
+    const [encoding, setEncoding] = useState('auto');
+    const [hostKeyMode, setHostKeyMode] = useState('accept-new');
     const [useJump, setUseJump] = useState(false);
     const [jumpHost, setJumpHost] = useState('');
     const [jumpPort, setJumpPort] = useState(22);
@@ -36,13 +41,16 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
 
     // 已保存会话
     const [sessions, setSessions] = useState<model.StoredSession[]>([]);
+    const [groups, setGroups] = useState<string[]>([]);
     const [selectedSession, setSelectedSession] = useState('');
     const [saveSession, setSaveSession] = useState(false);
     const [sessionName, setSessionName] = useState('');
+    const [sessionGroup, setSessionGroup] = useState(''); // 保存会话时的分组
 
     async function refreshSessions() {
         try {
             setSessions((await ListSessions()) ?? []);
+            setGroups((await ListGroups()) ?? []);
         } catch (e) {
             /* 存储不可用时不打扰 */
         }
@@ -60,7 +68,24 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
             setPort(cfg.port);
             setUsername(cfg.username);
             setPassword(cfg.password);
+            setEncoding(cfg.encoding ?? 'auto');
+            setHostKeyMode(cfg.hostKeyMode ?? 'accept-new');
+            // 回填该会话所在分组 (从会话列表取, 便于继续修改)
+            const s = sessions.find((x) => x.id === selectedSession);
+            setSessionGroup(s?.group ?? '');
             setError('');
+        } catch (e: any) {
+            setError(e?.message ?? String(e));
+        }
+    }
+
+    // 将选中的会话移动到指定分组 (空=未分组)
+    async function moveSelected(group: string) {
+        if (!selectedSession) return;
+        try {
+            await MoveSession(selectedSession, group);
+            setSessionGroup(group);
+            refreshSessions();
         } catch (e: any) {
             setError(e?.message ?? String(e));
         }
@@ -91,6 +116,8 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                 privateKeyPath: authMethod === 'key' ? keyPath : '',
                 passphrase,
                 otp,
+                encoding,
+                hostKeyMode,
                 jumpHost: useJump ? jumpHost : '',
                 jumpPort,
                 jumpUser: useJump ? jumpUser : '',
@@ -103,12 +130,37 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
             onConnected(id, label);
             if (saveSession) {
                 const name = sessionName.trim() || `${username}@${host}`;
-                SaveSession(name, host, port, username, password)
-                    .then(() => refreshSessions())
+                SaveSession(name, host, port, username, password, encoding, hostKeyMode)
+                    .then(async (sid) => {
+                        if (sessionGroup) await MoveSession(sid, sessionGroup); // 新会话落入分组
+                        refreshSessions();
+                    })
                     .catch((e: any) => console.warn('保存会话失败', e));
             }
         } catch (e: any) {
-            setError(e?.message ?? String(e));
+            const msg = e?.message ?? String(e);
+            // strict 模式首次连接: 后端返回 HOST_KEY_UNVERIFIED|host|port|fingerprint
+            if (msg.startsWith('HOST_KEY_UNVERIFIED|')) {
+                const parts = msg.split('|');
+                const fp = parts[3] ?? '';
+                const ok = window.confirm(
+                    `⚠️ 主机密钥未验证\n\n${host}:${port} 是首次连接的主机。\n\nSHA256 指纹:\n${fp}\n\n是否信任该主机并继续连接?`,
+                );
+                if (ok) {
+                    try {
+                        await AcceptHostKey(host, port);
+                        setError('');
+                        await connect(); // 记录成功后重连
+                        return;
+                    } catch (e2: any) {
+                        setError(e2?.message ?? String(e2));
+                    }
+                } else {
+                    setError('已取消连接: 未信任该主机密钥');
+                }
+            } else {
+                setError(msg);
+            }
         } finally {
             setConnecting(false);
         }
@@ -131,11 +183,34 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
             <div className="session-bar">
                 <select value={selectedSession} onChange={(e) => setSelectedSession(e.target.value)}>
                     <option value="">— 已保存的会话 —</option>
-                    {sessions.map((s) => (
-                        <option key={s.id} value={s.id}>
-                            {s.name} ({s.username}@{s.host}:{s.port})
-                        </option>
-                    ))}
+                    {groups.length === 0
+                        ? sessions.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                  {s.name} ({s.username}@{s.host}:{s.port})
+                              </option>
+                          ))
+                        : groups.map((g) => (
+                              <optgroup key={g} label={g}>
+                                  {sessions
+                                      .filter((s) => s.group === g)
+                                      .map((s) => (
+                                          <option key={s.id} value={s.id}>
+                                              {s.name} ({s.username}@{s.host}:{s.port})
+                                          </option>
+                                      ))}
+                              </optgroup>
+                          ))}
+                    {groups.length > 0 && (
+                        <optgroup label="未分组">
+                            {sessions
+                                .filter((s) => !s.group)
+                                .map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.name} ({s.username}@{s.host}:{s.port})
+                                    </option>
+                                ))}
+                        </optgroup>
+                    )}
                 </select>
                 <button type="button" onClick={loadSelected} disabled={!selectedSession}>
                     加载
@@ -143,6 +218,18 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                 <button type="button" onClick={deleteSelected} disabled={!selectedSession}>
                     删除
                 </button>
+                {selectedSession && (
+                    <>
+                        <select value={sessionGroup} onChange={(e) => moveSelected(e.target.value)} title="移动分组">
+                            <option value="">未分组</option>
+                            {groups.map((g) => (
+                                <option key={g} value={g}>
+                                    {g}
+                                </option>
+                            ))}
+                        </select>
+                    </>
+                )}
             </div>
 
             <form
@@ -206,7 +293,7 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                             </label>
                         ) : (
                             <>
-                                <label>
+                                <label className="field-full">
                                     私钥文件
                                     <div className="key-row">
                                         <input
@@ -238,6 +325,22 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                         <label>
                             双因素验证码（可选）
                             <input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="OTP / 验证码" />
+                        </label>
+                        <label>
+                            输出编码
+                            <select value={encoding} onChange={(e) => setEncoding(e.target.value)}>
+                                <option value="auto">自动识别 (UTF-8/GBK)</option>
+                                <option value="utf-8">UTF-8</option>
+                                <option value="gbk">GBK (Windows 服务器)</option>
+                            </select>
+                        </label>
+                        <label>
+                            主机密钥校验
+                            <select value={hostKeyMode} onChange={(e) => setHostKeyMode(e.target.value)}>
+                                <option value="accept-new">自动接受新主机 (默认)</option>
+                                <option value="strict">首次连接需确认</option>
+                                <option value="off">不校验 (不安全)</option>
+                            </select>
                         </label>
                         <label className="save-session">
                             <input type="checkbox" checked={useJump} onChange={(e) => setUseJump(e.target.checked)} />
@@ -286,14 +389,30 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                             连接成功后保存到会话库
                         </label>
                         {saveSession && (
-                            <label>
-                                会话名
-                                <input
-                                    value={sessionName}
-                                    onChange={(e) => setSessionName(e.target.value)}
-                                    placeholder="留空则用 user@host"
-                                />
-                            </label>
+                            <>
+                                <label>
+                                    会话名
+                                    <input
+                                        value={sessionName}
+                                        onChange={(e) => setSessionName(e.target.value)}
+                                        placeholder="留空则用 user@host"
+                                    />
+                                </label>
+                                <label>
+                                    分组 (可选)
+                                    <input
+                                        value={sessionGroup}
+                                        onChange={(e) => setSessionGroup(e.target.value)}
+                                        placeholder="留空=未分组, 支持新建分组"
+                                        list="group-options"
+                                    />
+                                    <datalist id="group-options">
+                                        {groups.map((g) => (
+                                            <option key={g} value={g} />
+                                        ))}
+                                    </datalist>
+                                </label>
+                            </>
                         )}
                     </>
                 )}

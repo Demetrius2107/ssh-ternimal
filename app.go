@@ -4,20 +4,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
+	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/zalando/go-keyring"
+	"golang.org/x/crypto/ssh"
 
+	"ssh-terminal/internal/ai"
 	"ssh-terminal/internal/localfs"
 	"ssh-terminal/internal/model"
-	"ssh-terminal/internal/store"
 	"ssh-terminal/internal/sshcore"
+	"ssh-terminal/internal/store"
 	"ssh-terminal/internal/telnetcore"
 	"ssh-terminal/internal/transfer"
 )
@@ -53,6 +59,16 @@ type App struct {
 	manualClose map[uint64]bool            // 用户主动断开标记 (不自动重连)
 	cpuPrev     map[uint64]cpuSample       // CPU 采样差值基准 (资源监控)
 
+	// 待用户确认的主机密钥 (strict 模式首次连接): "host:port" -> 公钥
+	pendingHostKeys map[string]ssh.PublicKey
+
+	// AI 辅助 (成本控制: 单请求流式可中断)
+	aiMu           sync.Mutex
+	aiCancel       context.CancelFunc // 当前 AI 请求取消函数 (流式中断)
+	aiProvider     string             // deepseek / ollama
+	aiModel        string             // 模型档位
+	aiMonthlyLimit int64              // 月度 token 限额
+
 	engine *transfer.Engine
 	store  *store.Store
 
@@ -70,6 +86,7 @@ func NewApp() *App {
 		connConfigs:     make(map[uint64]model.SshConfig),
 		manualClose:     make(map[uint64]bool),
 		cpuPrev:         make(map[uint64]cpuSample),
+		pendingHostKeys: make(map[string]ssh.PublicKey),
 		tunnels:         make(map[uint64]*model.Tunnel),
 		tunnelListeners: make(map[uint64]net.Listener),
 		engine:          transfer.NewEngine(),
@@ -113,6 +130,25 @@ func (a *App) getSSH(id uint64) (*sshcore.Session, error) {
 	return nil, errors.New("会话不存在")
 }
 
+// hostKeyOf 生成 pendingHostKeys 的键: "host:port"
+func hostKeyOf(host string, port int) string {
+	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+// AcceptHostKey 接受并记录主机密钥 (strict 模式首次连接, 用户确认后调用)
+// 记录成功后需由前端重新发起连接
+func (a *App) AcceptHostKey(host string, port int) error {
+	key := hostKeyOf(host, port)
+	a.mu.Lock()
+	pub, ok := a.pendingHostKeys[key]
+	delete(a.pendingHostKeys, key)
+	a.mu.Unlock()
+	if !ok {
+		return errors.New("没有待确认的主机密钥, 请先发起连接")
+	}
+	return sshcore.AcceptHostKey(host, port, pub)
+}
+
 // ---------- SSH 终端 ----------
 
 // Connect 建立终端会话 (SSH/Telnet), 返回会话 ID
@@ -125,11 +161,19 @@ func (a *App) Connect(cfg model.SshConfig) (uint64, error) {
 	var err error
 	switch proto {
 	case "telnet":
-		sess, err = telnetcore.Connect(cfg.Host, cfg.Port)
+		sess, err = telnetcore.Connect(cfg.Host, cfg.Port, cfg.Encoding)
 	default:
 		sess, err = sshcore.Connect(cfg)
 	}
 	if err != nil {
+		// strict 模式首次连接: 暂存待确认密钥, 前端展示指纹并确认后重连
+		var uke *sshcore.UnknownHostKeyError
+		if errors.As(err, &uke) {
+			a.mu.Lock()
+			a.pendingHostKeys[hostKeyOf(uke.Host, uke.Port)] = uke.Key
+			a.mu.Unlock()
+			return 0, fmt.Errorf("HOST_KEY_UNVERIFIED|%s|%d|%s", uke.Host, uke.Port, uke.Fingerprint)
+		}
 		return 0, err
 	}
 	a.mu.Lock()
@@ -201,7 +245,7 @@ func (a *App) tryReconnect(id uint64, cfg model.SshConfig) bool {
 		var ns model.TermSession
 		var err error
 		if cfg.Protocol == "telnet" {
-			ns, err = telnetcore.Connect(cfg.Host, cfg.Port)
+			ns, err = telnetcore.Connect(cfg.Host, cfg.Port, cfg.Encoding)
 		} else {
 			ns, err = sshcore.Connect(cfg)
 		}
@@ -525,6 +569,42 @@ func (a *App) SftpTasks() []model.TransferTask {
 	return a.engine.Tasks()
 }
 
+// EditRemoteFile 远程编辑: 下载到临时文件 → 系统默认编辑器打开 → 关闭后自动回传
+func (a *App) EditRemoteFile(id uint64, remotePath string) error {
+	sess, err := a.getSSH(id)
+	if err != nil {
+		return err
+	}
+	data, err := sess.FetchFile(remotePath)
+	if err != nil {
+		return fmt.Errorf("下载失败: %v", err)
+	}
+	// 临时目录保留原始文件名 (含扩展名, 保证编辑器按类型打开)
+	tmpDir := filepath.Join(os.TempDir(), "ssh-terminal-edit")
+	if err := os.MkdirAll(tmpDir, 0700); err != nil {
+		return err
+	}
+	tmpFile := filepath.Join(tmpDir, path.Base(remotePath))
+	if err := os.WriteFile(tmpFile, data, 0600); err != nil {
+		return err
+	}
+	// 用系统默认程序打开并等待编辑器关闭 (notepad 等关闭后返回)
+	cmd := exec.Command("cmd", "/c", "start", "/wait", "", tmpFile)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("打开编辑器失败: %v", err)
+	}
+	// 编辑器已关闭, 读取修改后的内容回传
+	edited, err := os.ReadFile(tmpFile)
+	if err != nil {
+		return fmt.Errorf("读取编辑结果失败: %v", err)
+	}
+	if err := sess.PutFile(remotePath, edited); err != nil {
+		return fmt.Errorf("回传失败: %v", err)
+	}
+	_ = os.Remove(tmpFile)
+	return nil
+}
+
 // ---------- 本地文件 ----------
 
 // LocalListDir 列出本地目录
@@ -590,11 +670,11 @@ func (a *App) LaunchRdp(host string, port int, username string) error {
 // ---------- 会话管理 ----------
 
 // SaveSession 保存会话配置, 密码存系统凭据库, 返回会话 ID
-func (a *App) SaveSession(name, host string, port int, username, password string) (string, error) {
+func (a *App) SaveSession(name, host string, port int, username, password, encoding, hostKeyMode string) (string, error) {
 	if a.store == nil {
 		return "", errors.New("会话存储未初始化")
 	}
-	return a.store.Save(model.StoredSession{Name: name, Host: host, Port: port, Username: username}, password)
+	return a.store.Save(model.StoredSession{Name: name, Host: host, Port: port, Username: username, Encoding: encoding, HostKeyMode: hostKeyMode}, password)
 }
 
 // ListSessions 列出全部保存的会话
@@ -603,6 +683,245 @@ func (a *App) ListSessions() ([]model.StoredSession, error) {
 		return nil, errors.New("会话存储未初始化")
 	}
 	return a.store.List()
+}
+
+// ListGroups 列出全部分组名 (去重, 空分组名不列入)
+func (a *App) ListGroups() []string {
+	if a.store == nil {
+		return []string{}
+	}
+	sessions, err := a.store.List()
+	if err != nil {
+		return []string{}
+	}
+	seen := map[string]bool{}
+	out := []string{}
+	for _, s := range sessions {
+		if s.Group == "" || seen[s.Group] {
+			continue
+		}
+		seen[s.Group] = true
+		out = append(out, s.Group)
+	}
+	return out
+}
+
+// MoveSession 将会话移动到指定分组 (group 为空=移出分组)
+func (a *App) MoveSession(id, group string) error {
+	if a.store == nil {
+		return errors.New("会话存储未初始化")
+	}
+	return a.store.MoveGroup(id, group)
+}
+
+// ---------- 命令片段 (Snippets) ----------
+
+// ListSnippets 列出全部命令片段
+func (a *App) ListSnippets() ([]model.Snippet, error) {
+	if a.store == nil {
+		return []model.Snippet{}, errors.New("会话存储未初始化")
+	}
+	return a.store.ListSnippets()
+}
+
+// SaveSnippet 保存命令片段 (id 为空时新建), 返回 ID
+func (a *App) SaveSnippet(name, command, id string) (string, error) {
+	if a.store == nil {
+		return "", errors.New("会话存储未初始化")
+	}
+	if name == "" || command == "" {
+		return "", errors.New("名称和命令不能为空")
+	}
+	return a.store.SaveSnippet(model.Snippet{ID: id, Name: name, Command: command})
+}
+
+// DeleteSnippet 删除命令片段
+func (a *App) DeleteSnippet(id string) error {
+	if a.store == nil {
+		return errors.New("会话存储未初始化")
+	}
+	return a.store.DeleteSnippet(id)
+}
+
+// ---------- AI 辅助 ----------
+
+const (
+	aiKeyringService = "ssh-terminal"
+	aiKeyringKey     = "ai:deepseek"
+)
+
+// AiSetKey 保存 DeepSeek API Key (系统凭据库, 不落盘明文)
+func (a *App) AiSetKey(apiKey string) error {
+	if strings.TrimSpace(apiKey) == "" {
+		return errors.New("API Key 不能为空")
+	}
+	return keyring.Set(aiKeyringService, aiKeyringKey, strings.TrimSpace(apiKey))
+}
+
+// AiConfigure 保存 AI 配置 (provider/model/月度限额)
+func (a *App) AiConfigure(provider, model string, monthlyLimit int64) {
+	a.aiMu.Lock()
+	defer a.aiMu.Unlock()
+	a.aiProvider = provider
+	a.aiModel = model
+	if monthlyLimit > 0 {
+		a.aiMonthlyLimit = monthlyLimit
+	}
+}
+
+// AiStatus 返回 AI 配置与当月用量
+func (a *App) AiStatus() model.AiStatus {
+	a.aiMu.Lock()
+	provider, mdl := a.aiProvider, a.aiModel
+	limit := a.aiMonthlyLimit
+	a.aiMu.Unlock()
+	if provider == "" {
+		provider = ai.ProviderDeepSeek
+	}
+	if mdl == "" {
+		mdl = ai.ModelDeepSeekChat
+	}
+	if limit <= 0 {
+		limit = ai.DefaultMonthlyTokenLimit
+	}
+	st := model.AiStatus{Provider: provider, Model: mdl, MonthlyLimit: limit}
+	if a.store != nil {
+		st.MonthUsage, _ = a.store.GetAIUsage(time.Now().Format("2006-01"))
+	}
+	if _, err := keyring.Get(aiKeyringService, aiKeyringKey); err == nil {
+		st.KeyConfigured = true
+	}
+	return st
+}
+
+// AiChat 发送对话请求: 自动携带会话上下文(最近终端输出) → 脱敏 → 月度限额检查 →
+// 流式输出经 ai-delta 事件推送, 完成发 ai-done, 出错发 ai-error (可 AiCancel 中断)
+func (a *App) AiChat(sessionID uint64, prompt string) error {
+	if strings.TrimSpace(prompt) == "" {
+		return errors.New("请输入问题")
+	}
+	a.aiMu.Lock()
+	provider, mdl := a.aiProvider, a.aiModel
+	limit := a.aiMonthlyLimit
+	a.aiMu.Unlock()
+	if provider == "" {
+		provider = ai.ProviderDeepSeek
+	}
+	if mdl == "" {
+		mdl = ai.ModelDeepSeekChat
+	}
+	if limit <= 0 {
+		limit = ai.DefaultMonthlyTokenLimit
+	}
+
+	// 月度限额检查 (预估本次消耗)
+	month := time.Now().Format("2006-01")
+	used, err := a.store.GetAIUsage(month)
+	if err != nil {
+		return fmt.Errorf("读取用量失败: %v", err)
+	}
+	est := ai.EstimateTokens(prompt) + 2000 // 上下文+回复预算
+	if used+est > limit {
+		return fmt.Errorf("本月 AI 用量已达限额 (%d/%d token)，请调整限额或下月再试", used, limit)
+	}
+
+	// DeepSeek 需要 API Key
+	var apiKey string
+	if provider == ai.ProviderDeepSeek {
+		apiKey, _ = keyring.Get(aiKeyringService, aiKeyringKey)
+		if apiKey == "" {
+			return errors.New("未配置 DeepSeek API Key，请在设置中填写")
+		}
+	}
+
+	// 会话上下文: 最近终端输出 (历史文件尾部)
+	contextText := a.sessionContext(sessionID)
+
+	// 构建消息并脱敏
+	san := ai.NewSanitizer(nil)
+	system := san.Sanitize("你是嵌入 SSH 终端的运维助手。请简洁回答，涉及命令时给出可直接执行的命令，说明风险。")
+	user := san.Sanitize(fmt.Sprintf("以下是当前终端最近的输出上下文：\n---\n%s\n---\n\n用户问题：%s", contextText, prompt))
+	messages := []ai.Message{
+		{Role: "system", Content: system},
+		{Role: "user", Content: user},
+	}
+
+	p, err := ai.NewProvider(provider, apiKey)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	a.aiMu.Lock()
+	if a.aiCancel != nil {
+		a.aiCancel() // 中断上一个请求
+	}
+	a.aiCancel = cancel
+	a.aiMu.Unlock()
+
+	go func() {
+		defer cancel()
+		var reply strings.Builder
+		err := p.Chat(ctx, mdl, messages, func(delta string) {
+			reply.WriteString(delta)
+			runtime.EventsEmit(a.ctx, "ai-delta", model.AiDelta{Text: delta})
+		})
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				runtime.EventsEmit(a.ctx, "ai-error", model.AiDelta{Text: "已中断"})
+			} else {
+				runtime.EventsEmit(a.ctx, "ai-error", model.AiDelta{Text: err.Error()})
+			}
+			return
+		}
+		// 用量入账 (回复 token + 提问 token)
+		_ = a.store.AddAIUsage(month, ai.EstimateTokens(prompt)+ai.EstimateTokens(reply.String()))
+		runtime.EventsEmit(a.ctx, "ai-done", nil)
+	}()
+	return nil
+}
+
+// AiCancel 中断当前 AI 请求 (成本控制: 流式中断)
+func (a *App) AiCancel() {
+	a.aiMu.Lock()
+	defer a.aiMu.Unlock()
+	if a.aiCancel != nil {
+		a.aiCancel()
+		a.aiCancel = nil
+	}
+}
+
+// sessionContext 读取会话历史文件尾部内容作为 AI 上下文 (最近输出, 限 4KB)
+func (a *App) sessionContext(id uint64) string {
+	a.mu.Lock()
+	hf := a.history[id]
+	a.mu.Unlock()
+	if hf == nil || hf.path == "" {
+		return "(无历史输出)"
+	}
+	f, err := os.Open(hf.path)
+	if err != nil {
+		return "(无历史输出)"
+	}
+	defer f.Close()
+	const maxBytes = 4096
+	info, err := f.Stat()
+	if err != nil || info.Size() == 0 {
+		return "(无历史输出)"
+	}
+	offset := info.Size() - maxBytes
+	if offset < 0 {
+		offset = 0
+	}
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return "(无历史输出)"
+	}
+	buf := make([]byte, info.Size()-offset)
+	n, _ := f.Read(buf)
+	text := string(buf[:n])
+	if ai.IsBlank(text) {
+		return "(无历史输出)"
+	}
+	return ai.TrimContext(text, 2000)
 }
 
 // DeleteSession 删除会话及其密码
@@ -622,5 +941,5 @@ func (a *App) LoadSession(id string) (model.SshConfig, error) {
 	if err != nil {
 		return model.SshConfig{}, err
 	}
-	return model.SshConfig{Host: sess.Host, Port: sess.Port, Username: sess.Username, Password: pw}, nil
+	return model.SshConfig{Host: sess.Host, Port: sess.Port, Username: sess.Username, Password: pw, Encoding: sess.Encoding, HostKeyMode: sess.HostKeyMode}, nil
 }

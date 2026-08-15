@@ -35,6 +35,19 @@ export default function HomeView({ onConnected, onNewConnect }: Props) {
         });
     }, []);
 
+    // ESC 关闭历史内容查看弹窗
+    useEffect(() => {
+        if (!viewing) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                setViewing(null);
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [viewing]);
+
     async function quickConnect(id: string) {
         setConnecting(id);
         setError('');
