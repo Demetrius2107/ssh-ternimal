@@ -108,6 +108,7 @@ function App() {
     const [showSnippets, setShowSnippets] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const [showAudit, setShowAudit] = useState(false);
+    const [monitorPage, setMonitorPage] = useState(false); // 独立监控页面 (非弹窗)
     const [splitMode, setSplitMode] = useState(false);
     const [broadcastCmd, setBroadcastCmd] = useState('');
     const [theme, setTheme] = useState<ThemeName>(() => (localStorage.getItem('theme') as ThemeName) || 'dark');
@@ -158,10 +159,15 @@ function App() {
         return EventsOn('ssh-exit', onExit);
     }, []);
 
-    // ESC 关闭任意打开的功能模态框 (连接/历史/隧道/监控/片段/设置/审计)
+    // ESC 关闭任意打开的功能模态框 (连接/历史/隧道/监控/片段/设置/审计) 或返回独立监控页
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key !== 'Escape') return;
+            if (monitorPage) {
+                e.preventDefault();
+                setMonitorPage(false);
+                return;
+            }
             if (showConnect || showHistory || showTunnel || showMonitor || showSnippets || showSettings || showAudit) {
                 e.preventDefault();
                 setShowConnect(false);
@@ -175,7 +181,7 @@ function App() {
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [showConnect, showHistory, showTunnel, showMonitor, showSnippets, showSettings, showAudit]);
+    }, [showConnect, showHistory, showTunnel, showMonitor, showSnippets, showSettings, showAudit, monitorPage]);
 
     function closeSession(id: number) {
         SshClose(id);
@@ -264,6 +270,18 @@ function App() {
                 ))}
             </div>
             <div className={`session-body ${splitMode ? 'split' : ''}`}>
+                {monitorPage && openSessions.length > 0 && (
+                    <div className="monitor-page">
+                        <div className="monitor-page-bar">
+                            <button className="btn-hist" onClick={() => setMonitorPage(false)}>
+                                ← 返回
+                            </button>
+                            <span className="mp-title">主机监控 — {openSessions.find((s) => s.id === activeId)?.label ?? '会话'}</span>
+                            <span className="mp-hint">ESC 返回 · 数据每 2s 刷新</span>
+                        </div>
+                        <MonitorPanel sessionId={activeId ?? (openSessions[0]?.id ?? 0)} />
+                    </div>
+                )}
                 {splitMode && (
                     <div className="broadcast-bar">
                         <span className="bb-label">广播命令</span>
@@ -389,9 +407,19 @@ function App() {
                         {openSessions.length === 0 ? (
                             <div className="hist-empty">请先建立连接，再查看主机监控</div>
                         ) : (
-                            <MonitorPanel sessionId={activeId ?? (openSessions[0]?.id ?? 0)} />
+                            <MonitorPanel sessionId={activeId ?? (openSessions[0]?.id ?? 0)} compact />
                         )}
                         <div className="modal-actions">
+                            <button
+                                onClick={() => {
+                                    setShowMonitor(false);
+                                    setMonitorPage(true);
+                                }}
+                                disabled={openSessions.length === 0}
+                                title="打开完整监控页面 (折线图/进程/磁盘/端口)"
+                            >
+                                打开完整监控页
+                            </button>
                             <button onClick={() => setShowMonitor(false)}>关闭</button>
                         </div>
                     </div>

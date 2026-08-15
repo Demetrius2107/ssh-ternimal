@@ -1456,8 +1456,229 @@ body.theme-light .home-empty {
     min-width: 220px;
     text-align: right;
     color: #ddd;
-    font-family: Consolas, monospace;
+    font-family: Consolas, 'SF Mono', monospace;
     white-space: nowrap;
+}
+
+/* ---------- 详细监控 (标签页/折线图/表格) ---------- */
+.mon-tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.mt {
+    padding: 6px 16px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #a0a0a8;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.mt:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ddd;
+}
+
+.mt.active {
+    background: rgba(10, 132, 255, 0.18);
+    color: #6cb2ff;
+    font-weight: 600;
+}
+
+.mt-meta {
+    margin-left: auto;
+    font-size: 12px;
+    color: #8e8e93;
+}
+
+.mon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.mon-card {
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mc-label {
+    font-size: 12.5px;
+    color: #8e8e93;
+    font-weight: 500;
+}
+
+.mc-val {
+    font-size: 13px;
+    color: #e5e5ea;
+    font-family: Consolas, 'SF Mono', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chart-wrap {
+    position: relative;
+    width: 100%;
+}
+
+.chart-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.chart-cur {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    font-size: 11px;
+    font-family: Consolas, 'SF Mono', monospace;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+}
+
+.chart-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    font-size: 12px;
+}
+
+.mon-compact-row {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+}
+
+.mon-table-wrap {
+    max-height: 46vh;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+}
+
+.mon-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+}
+
+.mon-table th {
+    position: sticky;
+    top: 0;
+    padding: 8px 10px;
+    text-align: left;
+    background: #232326;
+    color: #8e8e93;
+    font-weight: 500;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mon-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: #ccc;
+}
+
+.mon-table tr:hover td {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.mt-num {
+    font-family: Consolas, 'SF Mono', monospace;
+    text-align: right;
+    color: #6cb2ff;
+}
+
+.mt-cmd {
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: Consolas, 'SF Mono', monospace;
+}
+
+.mt-port {
+    font-family: Consolas, 'SF Mono', monospace;
+    color: #ff9f0a;
+}
+
+.disk-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.disk-bar {
+    flex: 1;
+    min-width: 60px;
+    height: 8px;
+    background: #3a3a3c;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.disk-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #30d158, #ff9f0a);
+    border-radius: 4px;
+}
+
+.monitor-modal {
+    width: 680px;
+    max-width: 94vw;
+}
+
+.mp-compact .mon-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+/* ---------- 独立监控页面 (非弹窗, 完整视图) ---------- */
+.monitor-page {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px 18px;
+    overflow-y: auto;
+}
+
+.monitor-page-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.monitor-page-bar .btn-hist {
+    padding: 6px 14px;
+}
+
+.mp-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #e5e5ea;
+}
+
+.mp-hint {
+    margin-left: auto;
+    font-size: 12px;
+    color: #8e8e93;
 }
 
 /* ---------- 命令片段 ---------- */

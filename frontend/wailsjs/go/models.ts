@@ -54,6 +54,28 @@ export namespace model {
 	        this.label = source["label"];
 	    }
 	}
+	export class DiskUsage {
+	    filesystem: string;
+	    size: string;
+	    used: string;
+	    avail: string;
+	    usePct: number;
+	    mounted: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DiskUsage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filesystem = source["filesystem"];
+	        this.size = source["size"];
+	        this.used = source["used"];
+	        this.avail = source["avail"];
+	        this.usePct = source["usePct"];
+	        this.mounted = source["mounted"];
+	    }
+	}
 	export class FileEntry {
 	    name: string;
 	    path: string;
@@ -126,6 +148,44 @@ export namespace model {
 	        this.bytesIn = source["bytesIn"];
 	        this.bytesOut = source["bytesOut"];
 	        this.keepAliveMs = source["keepAliveMs"];
+	    }
+	}
+	export class PortInfo {
+	    protocol: string;
+	    addr: string;
+	    port: string;
+	    process: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PortInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.protocol = source["protocol"];
+	        this.addr = source["addr"];
+	        this.port = source["port"];
+	        this.process = source["process"];
+	    }
+	}
+	export class ProcEntry {
+	    pid: string;
+	    user: string;
+	    cpu: number;
+	    mem: number;
+	    command: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProcEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pid = source["pid"];
+	        this.user = source["user"];
+	        this.cpu = source["cpu"];
+	        this.mem = source["mem"];
+	        this.command = source["command"];
 	    }
 	}
 	export class Snippet {

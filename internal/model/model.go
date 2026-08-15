@@ -134,3 +134,30 @@ type SysMetrics struct {
 	NetOut     uint64  `json:"netOut"`   // 累计发送字节
 	Uptime     float64 `json:"uptime"`   // 秒
 }
+
+// ProcEntry 进程信息 (top 实时状态)
+type ProcEntry struct {
+	PID     string  `json:"pid"`
+	User    string  `json:"user"`
+	CPU     float64 `json:"cpu"` // %
+	Mem     float64 `json:"mem"` // %
+	Command string  `json:"command"`
+}
+
+// DiskUsage 磁盘分区占比
+type DiskUsage struct {
+	Filesystem string  `json:"filesystem"`
+	Size       string  `json:"size"`
+	Used       string  `json:"used"`
+	Avail      string  `json:"avail"`
+	UsePct     float64 `json:"usePct"`  // 使用率 %
+	Mounted    string  `json:"mounted"` // 挂载点
+}
+
+// PortInfo 监听端口
+type PortInfo struct {
+	Protocol string `json:"protocol"` // tcp / udp / tcp6
+	Addr     string `json:"addr"`     // 监听地址
+	Port     string `json:"port"`
+	Process  string `json:"process"` // 进程名 (可空)
+}

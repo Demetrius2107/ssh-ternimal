@@ -24,9 +24,17 @@ export function DeleteSnippet(arg1:string):Promise<void>;
 
 export function EditRemoteFile(arg1:number,arg2:string):Promise<void>;
 
+export function GetDiskUsage(arg1:number):Promise<Array<model.DiskUsage>>;
+
+export function GetOpenPorts(arg1:number):Promise<Array<model.PortInfo>>;
+
+export function GetProcessList(arg1:number):Promise<Array<model.ProcEntry>>;
+
 export function GetSessionMetrics(arg1:number):Promise<model.Metrics>;
 
 export function GetSysMetrics(arg1:number):Promise<model.SysMetrics>;
+
+export function GetSysMetricsHistory(arg1:number):Promise<Array<model.SysMetrics>>;
 
 export function LaunchRdp(arg1:string,arg2:number,arg3:string):Promise<void>;
 

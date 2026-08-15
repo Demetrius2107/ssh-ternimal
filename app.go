@@ -55,10 +55,11 @@ type App struct {
 	nextID   uint64
 	mu       sync.Mutex
 
-	connConfigs map[uint64]model.SshConfig // 断线重连用的连接配置
-	manualClose map[uint64]bool            // 用户主动断开标记 (不自动重连)
-	cpuPrev     map[uint64]cpuSample       // CPU 采样差值基准 (资源监控)
-	auditStart  map[uint64]time.Time       // 会话审计开始时间 (连接建立时记录)
+	connConfigs map[uint64]model.SshConfig    // 断线重连用的连接配置
+	manualClose map[uint64]bool               // 用户主动断开标记 (不自动重连)
+	cpuPrev     map[uint64]cpuSample          // CPU 采样差值基准 (资源监控)
+	auditStart  map[uint64]time.Time          // 会话审计开始时间 (连接建立时记录)
+	monHist     map[uint64][]model.SysMetrics // 监控历史采样环形缓冲 (折线图数据源)
 
 	// 待用户确认的主机密钥 (strict 模式首次连接): "host:port" -> 公钥
 	pendingHostKeys map[string]ssh.PublicKey
@@ -88,6 +89,7 @@ func NewApp() *App {
 		manualClose:     make(map[uint64]bool),
 		cpuPrev:         make(map[uint64]cpuSample),
 		auditStart:      make(map[uint64]time.Time),
+		monHist:         make(map[uint64][]model.SysMetrics),
 		pendingHostKeys: make(map[string]ssh.PublicKey),
 		tunnels:         make(map[uint64]*model.Tunnel),
 		tunnelListeners: make(map[uint64]net.Listener),
@@ -474,6 +476,175 @@ type cpuSample struct {
 	total uint64
 }
 
+// GetProcessList 远程进程列表 (按 CPU 降序, top 实时状态)
+func (a *App) GetProcessList(id uint64) ([]model.ProcEntry, error) {
+	sess, err := a.getSSH(id)
+	if err != nil {
+		return nil, err
+	}
+	const cmd = `ps -eo pid,user,pcpu,pmem,comm --sort=-pcpu | head -40`
+	out, err := sess.Exec(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("获取进程列表失败: %v", err)
+	}
+	var list []model.ProcEntry
+	lines := strings.Split(out, "\n")
+	for i, line := range lines {
+		if i == 0 || strings.TrimSpace(line) == "" {
+			continue // 跳过表头与空行
+		}
+		f := strings.Fields(line)
+		if len(f) < 5 {
+			continue
+		}
+		cpu, _ := strconv.ParseFloat(f[2], 64)
+		mem, _ := strconv.ParseFloat(f[3], 64)
+		list = append(list, model.ProcEntry{
+			PID:     f[0],
+			User:    f[1],
+			CPU:     cpu,
+			Mem:     mem,
+			Command: strings.Join(f[4:], " "),
+		})
+	}
+	return list, nil
+}
+
+// GetDiskUsage 远程磁盘分区占比 (df 解析)
+func (a *App) GetDiskUsage(id uint64) ([]model.DiskUsage, error) {
+	sess, err := a.getSSH(id)
+	if err != nil {
+		return nil, err
+	}
+	const cmd = `df -kP | awk 'NR>1 {print $1"|"$2"|"$3"|"$4"|"$5"|"$6}'`
+	out, err := sess.Exec(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("获取磁盘信息失败: %v", err)
+	}
+	var list []model.DiskUsage
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "|")
+		if len(parts) < 6 {
+			continue
+		}
+		pctStr := strings.TrimSuffix(parts[4], "%")
+		pct, _ := strconv.ParseFloat(pctStr, 64)
+		list = append(list, model.DiskUsage{
+			Filesystem: parts[0],
+			Size:       fmtKB(parts[1]),
+			Used:       fmtKB(parts[2]),
+			Avail:      fmtKB(parts[3]),
+			UsePct:     pct,
+			Mounted:    parts[5],
+		})
+	}
+	return list, nil
+}
+
+// GetOpenPorts 远程监听端口 (ss 优先, netstat 兜底)
+func (a *App) GetOpenPorts(id uint64) ([]model.PortInfo, error) {
+	sess, err := a.getSSH(id)
+	if err != nil {
+		return nil, err
+	}
+	const cmd = `(ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null) | tail -n +2`
+	out, err := sess.Exec(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("获取端口信息失败: %v", err)
+	}
+	var list []model.PortInfo
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		f := strings.Fields(line)
+		// ss: State Recv-Q Send-Q Local-Addr:Port Peer-Addr:Port Process
+		// netstat: Proto Recv-Q Send-Q Local Address Foreign Address State PID/Program
+		if len(f) < 5 {
+			continue
+		}
+		if f[0] == "LISTEN" { // ss 格式: State 在前
+			p := parseAddrPort(f[3])
+			proc := ""
+			for _, x := range f {
+				if strings.Contains(x, "users:") || strings.Contains(x, "PID/Program") {
+					proc = x
+					break
+				}
+			}
+			proc = cleanProcInfo(proc)
+			list = append(list, model.PortInfo{Protocol: "tcp", Addr: p.addr, Port: p.port, Process: proc})
+		} else if strings.HasPrefix(f[0], "tcp") { // netstat 格式: Proto 在前
+			p := parseAddrPort(f[3])
+			proc := ""
+			if len(f) >= 7 {
+				proc = cleanProcInfo(f[6])
+			}
+			list = append(list, model.PortInfo{Protocol: f[0], Addr: p.addr, Port: p.port, Process: proc})
+		}
+	}
+	return list, nil
+}
+
+// addrPort 解析 "addr:port" (兼容 IPv6 [::]:22)
+type addrPort struct{ addr, port string }
+
+func parseAddrPort(s string) addrPort {
+	if strings.HasPrefix(s, "[") {
+		// IPv6: [addr]:port
+		if idx := strings.LastIndex(s, "]:"); idx > 0 {
+			return addrPort{addr: s[1:idx], port: s[idx+2:]}
+		}
+		return addrPort{addr: s}
+	}
+	if idx := strings.LastIndex(s, ":"); idx > 0 {
+		return addrPort{addr: s[:idx], port: s[idx+1:]}
+	}
+	return addrPort{addr: s}
+}
+
+// cleanProcInfo 提取进程信息 (users:(("nginx",pid=123,fd=4)) → nginx)
+func cleanProcInfo(s string) string {
+	if s == "" {
+		return ""
+	}
+	if idx := strings.Index(s, "(("); idx >= 0 {
+		rest := s[idx+2:]
+		if end := strings.Index(rest, "\""); end >= 0 {
+			rest = rest[end+1:]
+			if end2 := strings.Index(rest, "\""); end2 >= 0 {
+				return rest[:end2]
+			}
+		}
+	}
+	// netstat 的 PID/Program 格式: "1234/nginx"
+	if idx := strings.Index(s, "/"); idx >= 0 {
+		return s[idx+1:]
+	}
+	return s
+}
+
+// fmtKB 将 KB 数值格式化为可读大小
+func fmtKB(kb string) string {
+	n, err := strconv.ParseFloat(kb, 64)
+	if err != nil {
+		return kb
+	}
+	switch {
+	case n >= 1024*1024:
+		return fmt.Sprintf("%.1fG", n/1024/1024)
+	case n >= 1024:
+		return fmt.Sprintf("%.0fM", n/1024)
+	default:
+		return fmt.Sprintf("%.0fK", n)
+	}
+}
+
 // GetSysMetrics 远程主机资源指标 (CPU 使用率 / 内存 / 网络 / 运行时长)
 func (a *App) GetSysMetrics(id uint64) (model.SysMetrics, error) {
 	sess, err := a.getSSH(id)
@@ -502,7 +673,30 @@ func (a *App) GetSysMetrics(id uint64) (model.SysMetrics, error) {
 			}
 		}
 	}
+	// 历史采样入环形缓冲 (最多 120 条 = 约 4 分钟 @2s, 供折线图)
+	a.mu.Lock()
+	hist := a.monHist[id]
+	hist = append(hist, r.m)
+	if len(hist) > 120 {
+		hist = hist[len(hist)-120:]
+	}
+	a.monHist[id] = hist
+	a.mu.Unlock()
 	return r.m, nil
+}
+
+// GetSysMetricsHistory 返回监控历史采样序列 (折线图数据源, 时间正序)
+func (a *App) GetSysMetricsHistory(id uint64) ([]model.SysMetrics, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	hist := a.monHist[id]
+	if hist == nil {
+		return []model.SysMetrics{}, nil
+	}
+	// 拷贝避免调用方修改内部缓冲
+	out := make([]model.SysMetrics, len(hist))
+	copy(out, hist)
+	return out, nil
 }
 
 // procRaw /proc 输出解析结果

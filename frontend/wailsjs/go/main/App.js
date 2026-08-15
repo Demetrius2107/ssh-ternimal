@@ -46,12 +46,28 @@ export function EditRemoteFile(arg1, arg2) {
   return window['go']['main']['App']['EditRemoteFile'](arg1, arg2);
 }
 
+export function GetDiskUsage(arg1) {
+  return window['go']['main']['App']['GetDiskUsage'](arg1);
+}
+
+export function GetOpenPorts(arg1) {
+  return window['go']['main']['App']['GetOpenPorts'](arg1);
+}
+
+export function GetProcessList(arg1) {
+  return window['go']['main']['App']['GetProcessList'](arg1);
+}
+
 export function GetSessionMetrics(arg1) {
   return window['go']['main']['App']['GetSessionMetrics'](arg1);
 }
 
 export function GetSysMetrics(arg1) {
   return window['go']['main']['App']['GetSysMetrics'](arg1);
+}
+
+export function GetSysMetricsHistory(arg1) {
+  return window['go']['main']['App']['GetSysMetricsHistory'](arg1);
 }
 
 export function LaunchRdp(arg1, arg2, arg3) {
