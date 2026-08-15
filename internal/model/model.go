@@ -92,6 +92,22 @@ type AiDelta struct {
 	Text string `json:"text"`
 }
 
+// AuditEntry 会话审计条目 (操作留痕, 内网运维/审计场景)
+type AuditEntry struct {
+	ID        string `json:"id"`
+	StartTime string `json:"startTime"` // 连接开始 "2006-01-02 15:04:05"
+	EndTime   string `json:"endTime"`   // 连接结束 (空=进行中)
+	Duration  int64  `json:"duration"`  // 时长 (秒, 0=进行中)
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	User      string `json:"user"`
+	Protocol  string `json:"protocol"` // ssh / telnet
+	BytesIn   int64  `json:"bytesIn"`
+	BytesOut  int64  `json:"bytesOut"`
+	History   string `json:"history"` // 历史日志文件路径 (回放用, 空=无)
+	Label     string `json:"label"`   // 会话标签 user@host:port
+}
+
 // Snippet 命令片段 (快捷命令)
 type Snippet struct {
 	ID      string `json:"id"`

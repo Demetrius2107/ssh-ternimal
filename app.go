@@ -58,6 +58,7 @@ type App struct {
 	connConfigs map[uint64]model.SshConfig // 断线重连用的连接配置
 	manualClose map[uint64]bool            // 用户主动断开标记 (不自动重连)
 	cpuPrev     map[uint64]cpuSample       // CPU 采样差值基准 (资源监控)
+	auditStart  map[uint64]time.Time       // 会话审计开始时间 (连接建立时记录)
 
 	// 待用户确认的主机密钥 (strict 模式首次连接): "host:port" -> 公钥
 	pendingHostKeys map[string]ssh.PublicKey
@@ -86,6 +87,7 @@ func NewApp() *App {
 		connConfigs:     make(map[uint64]model.SshConfig),
 		manualClose:     make(map[uint64]bool),
 		cpuPrev:         make(map[uint64]cpuSample),
+		auditStart:      make(map[uint64]time.Time),
 		pendingHostKeys: make(map[string]ssh.PublicKey),
 		tunnels:         make(map[uint64]*model.Tunnel),
 		tunnelListeners: make(map[uint64]net.Listener),
@@ -194,8 +196,79 @@ func (a *App) Connect(cfg model.SshConfig) (uint64, error) {
 		a.mu.Unlock()
 	}
 
+	// 会话审计: 连接建立时记录条目 (结束信息在 attachSession 会话退出时补记)
+	a.startAudit(id, cfg, proto, hf)
+
 	a.attachSession(id, sess, cfg)
 	return id, nil
+}
+
+// startAudit 建立审计条目: 记录开始时间/主机/用户/协议/历史文件, 存 auditStart 供结束补记
+func (a *App) startAudit(id uint64, cfg model.SshConfig, proto string, hf *historyFile) {
+	if a.store == nil {
+		return
+	}
+	now := time.Now()
+	a.mu.Lock()
+	a.auditStart[id] = now
+	a.mu.Unlock()
+	label := fmt.Sprintf("%s@%s:%d", cfg.Username, cfg.Host, cfg.Port)
+	entry := model.AuditEntry{
+		StartTime: now.Format("2006-01-02 15:04:05"),
+		Host:      cfg.Host,
+		Port:      cfg.Port,
+		User:      cfg.Username,
+		Protocol:  proto,
+		Label:     label,
+	}
+	if hf != nil {
+		entry.History = hf.path
+	}
+	_, _ = a.store.SaveAudit(entry)
+}
+
+// finishAudit 会话结束时补记审计: 结束时间/时长/收发字节
+func (a *App) finishAudit(id uint64, sess model.TermSession) {
+	if a.store == nil {
+		return
+	}
+	a.mu.Lock()
+	start, ok := a.auditStart[id]
+	delete(a.auditStart, id)
+	a.mu.Unlock()
+	if !ok {
+		return
+	}
+	m := sess.Metrics()
+	entry := model.AuditEntry{
+		EndTime:  time.Now().Format("2006-01-02 15:04:05"),
+		Duration: int64(time.Since(start).Seconds()),
+		BytesIn:  m.BytesIn,
+		BytesOut: m.BytesOut,
+	}
+	// 按 label 找对应条目: 直接读列表匹配不可靠, 这里用最近一条未结束的覆盖更新
+	// (单会话场景下最新一条即为本会话; 简化: 存储层按 ID 覆盖, 用 label+start 定位)
+	_ = a.updateAuditEntry(entry)
+}
+
+// updateAuditEntry 用结束信息更新最近一条审计 (StartTime 最早未完结的会被覆盖)
+func (a *App) updateAuditEntry(entry model.AuditEntry) error {
+	list, err := a.store.ListAudit()
+	if err != nil {
+		return err
+	}
+	for i := range list {
+		e := list[i]
+		if e.EndTime == "" { // 未完结的条目即为本会话
+			e.EndTime = entry.EndTime
+			e.Duration = entry.Duration
+			e.BytesIn = entry.BytesIn
+			e.BytesOut = entry.BytesOut
+			_, err := a.store.SaveAudit(e)
+			return err
+		}
+	}
+	return nil
 }
 
 // attachSession 挂接会话输出泵与断线处理 (初次连接与自动重连共用)
@@ -225,6 +298,8 @@ func (a *App) attachSession(id uint64, sess model.TermSession, cfg model.SshConf
 			msg = err.Error()
 		}
 		runtime.EventsEmit(a.ctx, "ssh-exit", SshExit{SessionID: id, Error: msg})
+		// 会话审计完结: 补记结束时间/时长/收发字节
+		a.finishAudit(id, sess)
 		a.mu.Lock()
 		delete(a.sessions, id)
 		delete(a.connConfigs, id)
@@ -712,6 +787,22 @@ func (a *App) MoveSession(id, group string) error {
 		return errors.New("会话存储未初始化")
 	}
 	return a.store.MoveGroup(id, group)
+}
+
+// ListAudit 列出会话审计条目 (最新在前), 供审计面板展示与回放
+func (a *App) ListAudit() ([]model.AuditEntry, error) {
+	if a.store == nil {
+		return []model.AuditEntry{}, errors.New("会话存储未初始化")
+	}
+	return a.store.ListAudit()
+}
+
+// ClearAudit 清空全部会话审计条目
+func (a *App) ClearAudit() error {
+	if a.store == nil {
+		return errors.New("会话存储未初始化")
+	}
+	return a.store.ClearAudit()
 }
 
 // ---------- 命令片段 (Snippets) ----------

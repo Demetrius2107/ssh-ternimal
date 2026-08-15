@@ -1941,6 +1941,158 @@ body.theme-light .home-empty {
     cursor: not-allowed;
 }
 
+/* ---------- 会话审计面板 ---------- */
+.audit-modal {
+    width: 780px;
+    max-width: 94vw;
+}
+
+.audit-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 300px;
+}
+
+.audit-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.audit-toolbar button {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #ddd;
+    cursor: pointer;
+    font-size: 12.5px;
+}
+
+.audit-toolbar button:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.audit-toolbar .audit-clear {
+    background: rgba(138, 45, 45, 0.6);
+    color: #fff;
+}
+
+.audit-toolbar .audit-clear:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.audit-count {
+    margin-left: auto;
+    font-size: 12px;
+    color: #8e8e93;
+}
+
+.audit-list {
+    max-height: 46vh;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+}
+
+.audit-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+}
+
+.audit-table th {
+    position: sticky;
+    top: 0;
+    padding: 8px 10px;
+    text-align: left;
+    background: #232326;
+    color: #8e8e93;
+    font-weight: 500;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.audit-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: #ccc;
+}
+
+.audit-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.au-time {
+    white-space: nowrap;
+    font-family: Consolas, 'SF Mono', monospace;
+    font-size: 12px;
+    color: #a0a0a8;
+}
+
+.au-host {
+    font-family: Consolas, 'SF Mono', monospace;
+    font-size: 12px;
+    color: #e5e5ea;
+}
+
+.au-proto {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.au-proto.au-ssh {
+    background: rgba(10, 132, 255, 0.15);
+    color: #6cb2ff;
+}
+
+.au-proto.au-telnet {
+    background: rgba(48, 209, 88, 0.15);
+    color: #5fd97e;
+}
+
+.au-dur,
+.au-bytes {
+    font-family: Consolas, 'SF Mono', monospace;
+    font-size: 12px;
+    color: #a0a0a8;
+    white-space: nowrap;
+}
+
+.au-replay-btn {
+    padding: 3px 12px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(10, 132, 255, 0.2);
+    color: #6cb2ff;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.au-replay-btn:hover:not(:disabled) {
+    background: rgba(10, 132, 255, 0.35);
+}
+
+.au-replay-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.audit-replay {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 50vh;
+}
+
+.audit-replay .log-content {
+    max-height: 42vh;
+}
+
 /* ---------- 连接表单操作行 ---------- */
 .form-actions {
     display: flex;

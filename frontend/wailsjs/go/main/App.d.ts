@@ -14,6 +14,8 @@ export function AiSetKey(arg1:string):Promise<void>;
 
 export function AiStatus():Promise<model.AiStatus>;
 
+export function ClearAudit():Promise<void>;
+
 export function Connect(arg1:model.SshConfig):Promise<number>;
 
 export function DeleteSession(arg1:string):Promise<void>;
@@ -27,6 +29,8 @@ export function GetSessionMetrics(arg1:number):Promise<model.Metrics>;
 export function GetSysMetrics(arg1:number):Promise<model.SysMetrics>;
 
 export function LaunchRdp(arg1:string,arg2:number,arg3:string):Promise<void>;
+
+export function ListAudit():Promise<Array<model.AuditEntry>>;
 
 export function ListGroups():Promise<Array<string>>;
 

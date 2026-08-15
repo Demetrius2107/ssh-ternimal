@@ -26,6 +26,10 @@ export function AiStatus() {
   return window['go']['main']['App']['AiStatus']();
 }
 
+export function ClearAudit() {
+  return window['go']['main']['App']['ClearAudit']();
+}
+
 export function Connect(arg1) {
   return window['go']['main']['App']['Connect'](arg1);
 }
@@ -52,6 +56,10 @@ export function GetSysMetrics(arg1) {
 
 export function LaunchRdp(arg1, arg2, arg3) {
   return window['go']['main']['App']['LaunchRdp'](arg1, arg2, arg3);
+}
+
+export function ListAudit() {
+  return window['go']['main']['App']['ListAudit']();
 }
 
 export function ListGroups() {

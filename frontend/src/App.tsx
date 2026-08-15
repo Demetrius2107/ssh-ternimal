@@ -10,6 +10,7 @@ import MonitorPanel from './MonitorPanel';
 import SnippetPanel from './SnippetPanel';
 import LogPanel from './LogPanel';
 import SettingsPanel from './SettingsPanel';
+import AuditPanel from './AuditPanel';
 import { THEMES, THEME_LIST, type ThemeName } from './themes';
 import './App.css';
 
@@ -76,6 +77,12 @@ const Icon = {
             <rect x="13" y="13" width="8" height="8" rx="1.5" />
         </svg>
     ),
+    audit: (
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
+            <rect x="6" y="6" width="12" height="12" rx="3" />
+        </svg>
+    ),
 };
 
 // Windows 本地路径 → file:/// URL (CSS background 用)
@@ -100,6 +107,7 @@ function App() {
     const [showMonitor, setShowMonitor] = useState(false);
     const [showSnippets, setShowSnippets] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    const [showAudit, setShowAudit] = useState(false);
     const [splitMode, setSplitMode] = useState(false);
     const [broadcastCmd, setBroadcastCmd] = useState('');
     const [theme, setTheme] = useState<ThemeName>(() => (localStorage.getItem('theme') as ThemeName) || 'dark');
@@ -150,11 +158,11 @@ function App() {
         return EventsOn('ssh-exit', onExit);
     }, []);
 
-    // ESC 关闭任意打开的功能模态框 (连接/历史/隧道/监控/片段/设置)
+    // ESC 关闭任意打开的功能模态框 (连接/历史/隧道/监控/片段/设置/审计)
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key !== 'Escape') return;
-            if (showConnect || showHistory || showTunnel || showMonitor || showSnippets || showSettings) {
+            if (showConnect || showHistory || showTunnel || showMonitor || showSnippets || showSettings || showAudit) {
                 e.preventDefault();
                 setShowConnect(false);
                 setShowHistory(false);
@@ -162,11 +170,12 @@ function App() {
                 setShowMonitor(false);
                 setShowSnippets(false);
                 setShowSettings(false);
+                setShowAudit(false);
             }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [showConnect, showHistory, showTunnel, showMonitor, showSnippets, showSettings]);
+    }, [showConnect, showHistory, showTunnel, showMonitor, showSnippets, showSettings, showAudit]);
 
     function closeSession(id: number) {
         SshClose(id);
@@ -205,6 +214,9 @@ function App() {
                 </button>
                 <button className="btn-hist" onClick={() => setShowSnippets(true)} title="命令片段">
                     {Icon.snippet} 片段
+                </button>
+                <button className="btn-hist" onClick={() => setShowAudit(true)} title="会话审计">
+                    {Icon.audit} 审计
                 </button>
                 <span className="tabbar-spacer" />
                 {bgImage && (
@@ -329,6 +341,17 @@ function App() {
                         <LogPanel />
                         <div className="modal-actions">
                             <button onClick={() => setShowHistory(false)}>关闭</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {showAudit && (
+                <div className="modal-mask" onClick={() => setShowAudit(false)}>
+                    <div className="modal audit-modal" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="modal-title">会话审计</h3>
+                        <AuditPanel />
+                        <div className="modal-actions">
+                            <button onClick={() => setShowAudit(false)}>关闭</button>
                         </div>
                     </div>
                 </div>

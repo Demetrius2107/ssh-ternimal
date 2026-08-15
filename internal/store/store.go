@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/zalando/go-keyring"
 	"go.etcd.io/bbolt"
@@ -20,6 +21,7 @@ const (
 	bucketName     = "sessions"
 	snippetBucket  = "snippets"
 	aiUsageBucket  = "ai_usage"
+	auditBucket    = "audit"
 	keyringService = "ssh-terminal"
 )
 
@@ -52,6 +54,10 @@ func Open() (*Store, error) {
 			return err
 		}
 		_, err = tx.CreateBucketIfNotExists([]byte(aiUsageBucket))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte(auditBucket))
 		return err
 	}); err != nil {
 		db.Close()
@@ -218,6 +224,52 @@ func (s *Store) GetAIUsage(month string) (int64, error) {
 		return nil
 	})
 	return cur, err
+}
+
+// ---------- 会话审计 (Audit) ----------
+
+// SaveAudit 保存或更新审计条目 (ID 相同时覆盖, 用于连接结束后补记时长/字节), 返回 ID
+func (s *Store) SaveAudit(e model.AuditEntry) (string, error) {
+	if e.ID == "" {
+		e.ID = newID()
+	}
+	data, err := json.Marshal(e)
+	if err != nil {
+		return "", err
+	}
+	err = s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(auditBucket)).Put([]byte(e.ID), data)
+	})
+	return e.ID, err
+}
+
+// ListAudit 列出全部审计条目, 按开始时间倒序 (最新在前)
+func (s *Store) ListAudit() ([]model.AuditEntry, error) {
+	out := []model.AuditEntry{}
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(auditBucket)).ForEach(func(k, v []byte) error {
+			var e model.AuditEntry
+			if err := json.Unmarshal(v, &e); err == nil {
+				out = append(out, e)
+			}
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	// 倒序: 最新连接在前
+	sort.Slice(out, func(i, j int) bool { return out[i].StartTime > out[j].StartTime })
+	return out, nil
+}
+
+// ClearAudit 清空全部审计条目
+func (s *Store) ClearAudit() error {
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(auditBucket)).ForEach(func(k, v []byte) error {
+			return tx.Bucket([]byte(auditBucket)).Delete(k)
+		})
+	})
 }
 
 // newID 生成 16 位十六进制会话 ID

@@ -20,6 +20,40 @@ export namespace model {
 	        this.keyConfigured = source["keyConfigured"];
 	    }
 	}
+	export class AuditEntry {
+	    id: string;
+	    startTime: string;
+	    endTime: string;
+	    duration: number;
+	    host: string;
+	    port: number;
+	    user: string;
+	    protocol: string;
+	    bytesIn: number;
+	    bytesOut: number;
+	    history: string;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AuditEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.startTime = source["startTime"];
+	        this.endTime = source["endTime"];
+	        this.duration = source["duration"];
+	        this.host = source["host"];
+	        this.port = source["port"];
+	        this.user = source["user"];
+	        this.protocol = source["protocol"];
+	        this.bytesIn = source["bytesIn"];
+	        this.bytesOut = source["bytesOut"];
+	        this.history = source["history"];
+	        this.label = source["label"];
+	    }
+	}
 	export class FileEntry {
 	    name: string;
 	    path: string;
