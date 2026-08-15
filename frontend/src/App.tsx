@@ -320,6 +320,7 @@ function App() {
                             fontFamily={fontFamily}
                             fontSize={fontSize}
                             onClose={() => closeSession(s.id)}
+                            onOpenSettings={() => setShowSettings(true)}
                         />
                     </div>
                 ))}

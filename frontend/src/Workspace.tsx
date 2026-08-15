@@ -12,6 +12,7 @@ interface Props {
     fontFamily: string;
     fontSize: number;
     onClose: () => void;
+    onOpenSettings?: () => void; // AI 配置入口 (⚙ 打开设置弹窗)
 }
 
 function fmtDur(s: number): string {
@@ -28,7 +29,7 @@ function fmtRate(bps: number): string {
 }
 
 // Workspace 单个会话的工作区: 终端/文件 子标签页 + 底部网络状态栏
-export default function Workspace({ sessionId, active, theme, fontFamily, fontSize, onClose }: Props) {
+export default function Workspace({ sessionId, active, theme, fontFamily, fontSize, onClose, onOpenSettings }: Props) {
     const [activeTab, setActiveTab] = useState<'terminal' | 'files' | 'ai'>('terminal');
     const [metrics, setMetrics] = useState<model.Metrics | null>(null);
     const [rate, setRate] = useState({ in: 0, out: 0 });
@@ -95,7 +96,7 @@ export default function Workspace({ sessionId, active, theme, fontFamily, fontSi
                 <FilePanel sessionId={sessionId} />
             </div>
             <div className={`tab-pane ${activeTab === 'ai' ? '' : 'hidden'}`}>
-                <AiPanel sessionId={sessionId} />
+                <AiPanel sessionId={sessionId} onOpenSettings={onOpenSettings} />
             </div>
             <div className="status-bar">
                 <span className="sb-dot" />
