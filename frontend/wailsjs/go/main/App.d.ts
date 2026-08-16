@@ -22,6 +22,8 @@ export function ClearAudit():Promise<void>;
 
 export function Connect(arg1:model.SshConfig):Promise<number>;
 
+export function DeleteCredential(arg1:string):Promise<void>;
+
 export function DeleteSession(arg1:string):Promise<void>;
 
 export function DeleteSnippet(arg1:string):Promise<void>;
@@ -54,6 +56,8 @@ export function LaunchVnc(arg1:string,arg2:number):Promise<void>;
 
 export function ListAudit():Promise<Array<model.AuditEntry>>;
 
+export function ListCredentials():Promise<Array<model.CredentialListEntry>>;
+
 export function ListGroups():Promise<Array<string>>;
 
 export function ListHistory():Promise<Array<model.HistoryEntry>>;
@@ -82,13 +86,19 @@ export function PickDir():Promise<string>;
 
 export function PickFile():Promise<string>;
 
+export function ReadCommandLog(arg1:string):Promise<string>;
+
 export function ReadHistory(arg1:string):Promise<string>;
+
+export function SaveCredential(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
 export function SaveSession(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:number,arg11:string,arg12:string):Promise<string>;
 
 export function SaveSnippet(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function SearchHistory(arg1:string):Promise<Array<model.HistoryMatch>>;
+
+export function SessionMeta(arg1:number):Promise<string>;
 
 export function SftpChmod(arg1:number,arg2:string,arg3:number):Promise<void>;
 

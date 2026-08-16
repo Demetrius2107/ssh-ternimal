@@ -22,6 +22,7 @@ const (
 	snippetBucket  = "snippets"
 	aiUsageBucket  = "ai_usage"
 	auditBucket    = "audit"
+	credBucket     = "credentials"
 	keyringService = "ssh-terminal"
 )
 
@@ -58,6 +59,10 @@ func Open() (*Store, error) {
 			return err
 		}
 		_, err = tx.CreateBucketIfNotExists([]byte(auditBucket))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte(credBucket))
 		return err
 	}); err != nil {
 		db.Close()
@@ -269,6 +274,64 @@ func (s *Store) ClearAudit() error {
 		return tx.Bucket([]byte(auditBucket)).ForEach(func(k, v []byte) error {
 			return tx.Bucket([]byte(auditBucket)).Delete(k)
 		})
+	})
+}
+
+// ---------- 集中凭据 (Keychain) ----------
+
+// credentialKey 凭据在 keyring 中的键
+func credentialKey(id string) string { return "cred:" + id }
+
+// SaveCredential 保存凭据 (secret 存系统凭据库, bbolt 只存元数据), 返回 ID
+func (s *Store) SaveCredential(c model.Credential, secret string) (string, error) {
+	if c.ID == "" {
+		c.ID = newID()
+	}
+	data, err := json.Marshal(c)
+	if err != nil {
+		return "", err
+	}
+	err = s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(credBucket)).Put([]byte(c.ID), data)
+	})
+	if err != nil {
+		return "", err
+	}
+	if secret != "" {
+		if err := keyring.Set(keyringService, credentialKey(c.ID), secret); err != nil {
+			return "", fmt.Errorf("保存凭据密钥到系统凭据库失败: %v", err)
+		}
+	}
+	return c.ID, nil
+}
+
+// ListCredentials 列出全部凭据元数据 (不含 secret)
+func (s *Store) ListCredentials() ([]model.CredentialListEntry, error) {
+	out := []model.CredentialListEntry{}
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(credBucket)).ForEach(func(k, v []byte) error {
+			var c model.Credential
+			if err := json.Unmarshal(v, &c); err == nil {
+				out = append(out, model.CredentialListEntry{
+					ID: c.ID, Name: c.Name, Type: c.Type, Username: c.Username, CreatedAt: c.CreatedAt,
+				})
+			}
+			return nil
+		})
+	})
+	return out, err
+}
+
+// GetCredentialSecret 读取凭据 secret (系统凭据库)
+func (s *Store) GetCredentialSecret(id string) (string, error) {
+	return keyring.Get(keyringService, credentialKey(id))
+}
+
+// DeleteCredential 删除凭据 (含系统凭据库中的 secret)
+func (s *Store) DeleteCredential(id string) error {
+	_ = keyring.Delete(keyringService, credentialKey(id))
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(credBucket)).Delete([]byte(id))
 	})
 }
 

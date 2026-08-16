@@ -32,6 +32,7 @@ export namespace model {
 	    bytesIn: number;
 	    bytesOut: number;
 	    history: string;
+	    commandLog: string;
 	    label: string;
 	
 	    static createFrom(source: any = {}) {
@@ -51,7 +52,28 @@ export namespace model {
 	        this.bytesIn = source["bytesIn"];
 	        this.bytesOut = source["bytesOut"];
 	        this.history = source["history"];
+	        this.commandLog = source["commandLog"];
 	        this.label = source["label"];
+	    }
+	}
+	export class CredentialListEntry {
+	    id: string;
+	    name: string;
+	    type: string;
+	    username: string;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CredentialListEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.type = source["type"];
+	        this.username = source["username"];
+	        this.createdAt = source["createdAt"];
 	    }
 	}
 	export class DiskUsage {
@@ -227,6 +249,7 @@ export namespace model {
 	    proxyPort: number;
 	    proxyUser: string;
 	    proxyPassword: string;
+	    credentialId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SshConfig(source);
@@ -256,6 +279,7 @@ export namespace model {
 	        this.proxyPort = source["proxyPort"];
 	        this.proxyUser = source["proxyUser"];
 	        this.proxyPassword = source["proxyPassword"];
+	        this.credentialId = source["credentialId"];
 	    }
 	}
 	export class StoredSession {
@@ -271,6 +295,7 @@ export namespace model {
 	    proxyHost: string;
 	    proxyPort: number;
 	    proxyUser: string;
+	    credentialId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new StoredSession(source);
@@ -290,6 +315,7 @@ export namespace model {
 	        this.proxyHost = source["proxyHost"];
 	        this.proxyPort = source["proxyPort"];
 	        this.proxyUser = source["proxyUser"];
+	        this.credentialId = source["credentialId"];
 	    }
 	}
 	export class SysMetrics {

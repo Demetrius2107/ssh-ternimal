@@ -168,12 +168,16 @@ func (a *App) AcceptHostKey(host string, port int) error {
 
 // Connect 建立终端会话 (SSH/Telnet), 返回会话 ID
 func (a *App) Connect(cfg model.SshConfig) (uint64, error) {
+	// Keychain 凭据引用: 解析集中凭据 (一处修改全局生效)
+	cfg, err := a.resolveCredential(cfg)
+	if err != nil {
+		return 0, err
+	}
 	proto := cfg.Protocol
 	if proto == "" {
 		proto = "ssh"
 	}
 	var sess model.TermSession
-	var err error
 	switch proto {
 	case "telnet":
 		sess, err = telnetcore.Connect(cfg.Host, cfg.Port, cfg.Encoding)
@@ -236,6 +240,7 @@ func (a *App) startAudit(id uint64, cfg model.SshConfig, proto string, hf *histo
 	}
 	if hf != nil {
 		entry.History = hf.path
+		entry.CommandLog = hf.commandLogPath()
 	}
 	_, _ = a.store.SaveAudit(entry)
 }
@@ -356,13 +361,31 @@ func (a *App) isManualClose(id uint64) bool {
 	return a.manualClose[id]
 }
 
-// SshSend 发送终端输入
+// SshSend 发送终端输入 (同时录制命令到审计文件, 操作留痕)
 func (a *App) SshSend(id uint64, data string) error {
 	sess, err := a.getSession(id)
 	if err != nil {
 		return err
 	}
+	// 命令录制: 用户输入写入 .cmd.log (回车落一条)
+	a.mu.Lock()
+	hf := a.history[id]
+	a.mu.Unlock()
+	if hf != nil {
+		hf.recordInput(data)
+	}
 	return sess.Send(data)
+}
+
+// SessionMeta 返回会话元信息 (供片段变量求值: {host}/{user}/{port})
+func (a *App) SessionMeta(id uint64) (host, user string, port int, err error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	cfg, ok := a.connConfigs[id]
+	if !ok {
+		return "", "", 0, errors.New("会话不存在")
+	}
+	return cfg.Host, cfg.Username, cfg.Port, nil
 }
 
 // SshResize 调整远程 PTY 尺寸
@@ -1022,6 +1045,66 @@ func (a *App) ApplyUpdate(localPath string, silent bool) error {
 	return nil
 }
 
+// ---------- 集中凭据 (Keychain) ----------
+
+// SaveCredential 保存集中凭据 (secret 存系统凭据库), 返回 ID
+func (a *App) SaveCredential(name, credType, username, secret string) (string, error) {
+	if a.store == nil {
+		return "", errors.New("会话存储未初始化")
+	}
+	if name == "" || username == "" || secret == "" {
+		return "", errors.New("凭据名、用户名、密钥均不能为空")
+	}
+	return a.store.SaveCredential(model.Credential{
+		Name: name, Type: credType, Username: username,
+		CreatedAt: time.Now().Format("2006-01-02 15:04"),
+	}, secret)
+}
+
+// ListCredentials 列出全部集中凭据 (不含 secret)
+func (a *App) ListCredentials() ([]model.CredentialListEntry, error) {
+	if a.store == nil {
+		return []model.CredentialListEntry{}, errors.New("会话存储未初始化")
+	}
+	return a.store.ListCredentials()
+}
+
+// DeleteCredential 删除集中凭据
+func (a *App) DeleteCredential(id string) error {
+	if a.store == nil {
+		return errors.New("会话存储未初始化")
+	}
+	return a.store.DeleteCredential(id)
+}
+
+// resolveCredential 按凭据引用解析登录用户与密码 (无引用返回原值)
+func (a *App) resolveCredential(cfg model.SshConfig) (model.SshConfig, error) {
+	if cfg.CredentialID == "" {
+		return cfg, nil
+	}
+	if a.store == nil {
+		return cfg, nil
+	}
+	secret, err := a.store.GetCredentialSecret(cfg.CredentialID)
+	if err != nil {
+		return cfg, fmt.Errorf("凭据解析失败 (ID=%s): %v", cfg.CredentialID, err)
+	}
+	// 凭据引用时以凭据的用户名为准
+	list, lerr := a.store.ListCredentials()
+	if lerr == nil {
+		for _, c := range list {
+			if c.ID == cfg.CredentialID {
+				cfg.Username = c.Username
+				break
+			}
+		}
+	}
+	if cfg.Password == "" && cfg.PrivateKey == "" && cfg.PrivateKeyPath == "" {
+		cfg.Password = secret
+	}
+	return cfg, nil
+}
+
 // ---------- Vault 端到端加密备份 (云同步的数据载体) ----------
 
 // vaultPayload Vault 备份内容 (服务端不可解密, 仅导出文件可见)
@@ -1570,5 +1653,6 @@ func (a *App) LoadSession(id string) (model.SshConfig, error) {
 		Encoding: sess.Encoding, HostKeyMode: sess.HostKeyMode,
 		ProxyType: sess.ProxyType, ProxyHost: sess.ProxyHost, ProxyPort: sess.ProxyPort,
 		ProxyUser: sess.ProxyUser, ProxyPassword: proxyPw,
+		CredentialID: sess.CredentialID,
 	}, nil
 }

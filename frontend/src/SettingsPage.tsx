@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AiSetKey, AiConfigure, AiStatus, CheckUpdate, DownloadUpdate, ApplyUpdate, VaultExport, VaultImport } from '../wailsjs/go/main/App';
+import { AiSetKey, AiConfigure, AiStatus, CheckUpdate, DownloadUpdate, ApplyUpdate, VaultExport, VaultImport, ListCredentials, SaveCredential, DeleteCredential } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 import { THEMES, THEME_LIST, type ThemeName } from './themes';
 import { SHORTCUT_ACTIONS, loadShortcuts, saveShortcuts, defaultShortcuts, formatShortcut, isModifierOnly } from './shortcuts';
@@ -24,7 +24,105 @@ const FONT_OPTIONS: Array<[string, string]> = [
     ['monospace', '系统等宽'],
 ];
 
-type SectionId = 'appearance' | 'terminal' | 'shortcuts' | 'ai' | 'vault' | 'about';
+type SectionId = 'appearance' | 'terminal' | 'shortcuts' | 'ai' | 'credentials' | 'vault' | 'about';
+
+// CredentialSection 集中凭据管理 (Keychain): 一处修改, 引用该凭据的会话全局生效
+function CredentialSection() {
+    const [list, setList] = useState<model.CredentialListEntry[]>([]);
+    const [name, setName] = useState('');
+    const [credType, setCredType] = useState('password');
+    const [username, setUsername] = useState('');
+    const [secret, setSecret] = useState('');
+    const [msg, setMsg] = useState('');
+    const [err, setErr] = useState('');
+
+    async function refresh() {
+        try {
+            setList((await ListCredentials()) ?? []);
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        }
+    }
+
+    useEffect(() => {
+        refresh();
+    }, []);
+
+    async function doSave() {
+        setErr('');
+        setMsg('');
+        try {
+            await SaveCredential(name.trim(), credType, username.trim(), secret);
+            setName('');
+            setSecret('');
+            setUsername('');
+            setMsg('凭据已保存');
+            refresh();
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        }
+    }
+
+    async function doDelete(id: string) {
+        if (!window.confirm('确认删除该凭据？引用它的会话将无法解析密码。')) return;
+        try {
+            await DeleteCredential(id);
+            refresh();
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        }
+    }
+
+    return (
+        <div className="sp-section">
+            <h2 className="sp-h2">集中凭据 (Keychain)</h2>
+            <p className="sp-desc">
+                将常用密码/密钥集中保存，多个会话可引用同一凭据——一处修改，所有引用它的会话全局生效。
+                凭据内容仅存于系统凭据库（加密），不落盘明文。
+            </p>
+            <div className="set-group">
+                <div className="set-label">新建凭据</div>
+                <input className="set-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="凭据名, 如 生产环境 root" />
+                <select className="set-select" value={credType} onChange={(e) => setCredType(e.target.value)}>
+                    <option value="password">密码</option>
+                    <option value="privateKey">私钥</option>
+                </select>
+                <input className="set-input" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="用户名" />
+                <input
+                    className="set-input"
+                    type="password"
+                    value={secret}
+                    onChange={(e) => setSecret(e.target.value)}
+                    placeholder={credType === 'password' ? '密码' : '私钥 PEM 内容'}
+                />
+                <button className="set-save" onClick={doSave} disabled={!name.trim() || !username.trim() || !secret}>
+                    保存凭据
+                </button>
+            </div>
+            {msg && <div className="tunnel-msg">{msg}</div>}
+            {err && <div className="error-box">{err}</div>}
+            <div className="set-group">
+                <div className="set-label">已保存凭据</div>
+                <div className="sc-list">
+                    {list.length === 0 && <div className="hist-empty">暂无凭据，先创建一个吧</div>}
+                    {list.map((c) => (
+                        <div key={c.id} className="sc-item">
+                            <div className="sc-info">
+                                <div className="sc-label">{c.name}</div>
+                                <div className="sc-desc">
+                                    {c.username} · {c.type === 'password' ? '密码' : '私钥'} · {c.createdAt}
+                                </div>
+                            </div>
+                            <button className="si-del" onClick={() => doDelete(c.id)}>
+                                删除
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
 
 // VaultSection Vault 端到端加密备份: 导出全部会话/凭据为加密串, 或从加密串恢复
 function VaultSection() {
@@ -235,6 +333,7 @@ const SECTIONS: Array<{ id: SectionId; label: string }> = [
     { id: 'terminal', label: '终端' },
     { id: 'shortcuts', label: '快捷键' },
     { id: 'ai', label: 'AI 辅助' },
+    { id: 'credentials', label: '凭据' },
     { id: 'vault', label: 'Vault 备份' },
     { id: 'about', label: '关于' },
 ];
@@ -502,6 +601,10 @@ export default function SettingsPage({ theme, onTheme, fontFamily, onFontFamily,
                         {aiMsg && <div className="tunnel-msg">{aiMsg}</div>}
                         {aiErr && <div className="error-box">{aiErr}</div>}
                     </div>
+                )}
+
+                {section === 'credentials' && (
+                    <CredentialSection />
                 )}
 
                 {section === 'vault' && (

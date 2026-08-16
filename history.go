@@ -20,11 +20,14 @@ const (
 	historyMaxTotal = 200 * 1024 * 1024 // 历史目录总大小上限 (200MB)
 )
 
-// historyFile 会话历史日志文件
+// historyFile 会话历史日志文件 (输出落盘 + 命令录制)
 type historyFile struct {
-	file *os.File
-	path string
-	mu   sync.Mutex
+	file    *os.File // 输出日志 (.log)
+	path    string   // 输出日志路径
+	cmd     *os.File // 命令录制 (.cmd.log)
+	cmdPath string   // 命令录制路径
+	cmdBuf  string   // 命令输入缓冲 (跨 chunk 拼接, 回车时落一条)
+	mu      sync.Mutex
 }
 
 // historyDir 历史记录目录: %AppData%/ssh-terminal/history
@@ -40,7 +43,7 @@ func historyDir() (string, error) {
 	return dir, nil
 }
 
-// openHistory 为会话创建历史日志文件 (输出实时落盘), 并触发滚动清理
+// openHistory 为会话创建历史日志文件 (输出实时落盘) 与命令录制文件, 并触发滚动清理
 func openHistory(label string) (*historyFile, error) {
 	dir, err := historyDir()
 	if err != nil {
@@ -52,7 +55,13 @@ func openHistory(label string) (*historyFile, error) {
 		return nil, err
 	}
 	cleanupHistory(dir)
-	return &historyFile{file: f, path: filepath.Join(dir, name)}, nil
+	// 命令录制文件 (.cmd.log): 操作留痕 (谁、何时、输过什么命令)
+	cmdPath := strings.TrimSuffix(name, ".log") + ".cmd.log"
+	cf, cerr := os.OpenFile(filepath.Join(dir, cmdPath), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if cerr != nil {
+		cf = nil
+	}
+	return &historyFile{file: f, path: filepath.Join(dir, name), cmd: cf, cmdPath: filepath.Join(dir, cmdPath)}, nil
 }
 
 // cleanupHistory 滚动清理: 文件数或总大小超限时, 按时间(文件名倒序=最新在前)删除最旧的
@@ -115,14 +124,67 @@ func (h *historyFile) write(data string) {
 	_, _ = h.file.WriteString(data)
 }
 
-func (h *historyFile) close() {
-	if h == nil || h.file == nil {
+// recordInput 记录用户输入的命令: 缓冲跨 chunk 拼接, 遇到回车 (\r) 时落一条带时间戳
+// 用于操作留痕审计 (谁、何时、输过什么命令)
+func (h *historyFile) recordInput(data string) {
+	if h == nil || h.cmd == nil {
 		return
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	_ = h.file.Close()
-	h.file = nil
+	h.cmdBuf += data
+	// 找到回车截断为完整命令
+	for {
+		idx := strings.IndexByte(h.cmdBuf, '\r')
+		if idx < 0 {
+			// 无回车: 缓冲可能超长 (粘贴大文本无回车), 超 4KB 强制落一条
+			if len(h.cmdBuf) > 4096 {
+				idx = len(h.cmdBuf)
+			} else {
+				return
+			}
+		}
+		cmd := strings.TrimSpace(strings.ReplaceAll(h.cmdBuf[:idx], "\x00", ""))
+		if cmd != "" && !strings.HasPrefix(cmd, "\x1b[") { // 跳过纯控制序列
+			_, _ = fmt.Fprintf(h.cmd, "[%s] %s\n", time.Now().Format("15:04:05"), cmd)
+		}
+		h.cmdBuf = h.cmdBuf[idx+1:]
+		if h.cmdBuf == "" {
+			return
+		}
+	}
+}
+
+// ReadCommandLog 读取会话命令录制内容 (审计操作留痕)
+func (a *App) ReadCommandLog(path string) (string, error) {
+	return a.ReadHistory(path) // 复用历史读取 (含路径校验与限长)
+}
+
+// CommandLogPath 返回会话命令录制文件路径 (供审计展示; 不存在返回空)
+func (h *historyFile) commandLogPath() string {
+	if h == nil {
+		return ""
+	}
+	if _, err := os.Stat(h.cmdPath); err != nil {
+		return ""
+	}
+	return h.cmdPath
+}
+
+func (h *historyFile) close() {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.file != nil {
+		_ = h.file.Close()
+		h.file = nil
+	}
+	if h.cmd != nil {
+		_ = h.cmd.Close()
+		h.cmd = nil
+	}
 }
 
 // ListHistory 列出历史记录 (按时间倒序)

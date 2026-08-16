@@ -42,6 +42,10 @@ export function Connect(arg1) {
   return window['go']['main']['App']['Connect'](arg1);
 }
 
+export function DeleteCredential(arg1) {
+  return window['go']['main']['App']['DeleteCredential'](arg1);
+}
+
 export function DeleteSession(arg1) {
   return window['go']['main']['App']['DeleteSession'](arg1);
 }
@@ -106,6 +110,10 @@ export function ListAudit() {
   return window['go']['main']['App']['ListAudit']();
 }
 
+export function ListCredentials() {
+  return window['go']['main']['App']['ListCredentials']();
+}
+
 export function ListGroups() {
   return window['go']['main']['App']['ListGroups']();
 }
@@ -162,8 +170,16 @@ export function PickFile() {
   return window['go']['main']['App']['PickFile']();
 }
 
+export function ReadCommandLog(arg1) {
+  return window['go']['main']['App']['ReadCommandLog'](arg1);
+}
+
 export function ReadHistory(arg1) {
   return window['go']['main']['App']['ReadHistory'](arg1);
+}
+
+export function SaveCredential(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SaveCredential'](arg1, arg2, arg3, arg4);
 }
 
 export function SaveSession(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12) {
@@ -176,6 +192,10 @@ export function SaveSnippet(arg1, arg2, arg3) {
 
 export function SearchHistory(arg1) {
   return window['go']['main']['App']['SearchHistory'](arg1);
+}
+
+export function SessionMeta(arg1) {
+  return window['go']['main']['App']['SessionMeta'](arg1);
 }
 
 export function SftpChmod(arg1, arg2, arg3) {

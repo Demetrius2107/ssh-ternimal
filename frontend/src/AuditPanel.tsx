@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ListAudit, ClearAudit, ReadHistory } from '../wailsjs/go/main/App';
+import { ListAudit, ClearAudit, ReadHistory, ReadCommandLog } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 
 function fmtDur(s: number): string {
@@ -18,13 +18,14 @@ function fmtBytes(n: number): string {
     return `${n} B`;
 }
 
-// AuditPanel 会话审计: 连接记录留痕 (时间/主机/用户/协议/时长/流量), 点击可回放该会话历史输出
+// AuditPanel 会话审计: 连接记录留痕 (时间/主机/用户/协议/时长/流量) + 操作记录 (命令留痕) + 输出回放
 export default function AuditPanel() {
     const [audits, setAudits] = useState<model.AuditEntry[]>([]);
     const [err, setErr] = useState('');
     const [playing, setPlaying] = useState<model.AuditEntry | null>(null);
     const [content, setContent] = useState('');
     const [loading, setLoading] = useState(false);
+    const [view, setView] = useState<'replay' | 'cmd'>('replay'); // 查看模式: 输出回放 / 操作记录
 
     async function refresh() {
         try {
@@ -45,8 +46,28 @@ export default function AuditPanel() {
         }
         setErr('');
         setLoading(true);
+        setView('replay');
         try {
             setContent(await ReadHistory(a.history));
+            setPlaying(a);
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    // 打开操作记录 (命令留痕)
+    async function openCmdLog(a: model.AuditEntry) {
+        if (!a.commandLog) {
+            setErr('该会话无命令记录');
+            return;
+        }
+        setErr('');
+        setLoading(true);
+        setView('cmd');
+        try {
+            setContent(await ReadCommandLog(a.commandLog));
             setPlaying(a);
         } catch (e: any) {
             setErr(e?.message ?? String(e));
@@ -80,7 +101,8 @@ export default function AuditPanel() {
                     <div className="log-toolbar">
                         <button onClick={() => setPlaying(null)}>← 返回审计列表</button>
                         <span className="lt-info">
-                            {playing.label} · {playing.startTime} · {playing.duration ? fmtDur(playing.duration) : '进行中'}
+                            {view === 'cmd' ? '操作记录' : '输出回放'} · {playing.label} · {playing.startTime} ·{' '}
+                            {playing.duration ? fmtDur(playing.duration) : '进行中'}
                         </span>
                     </div>
                     <pre className="log-content">
@@ -103,7 +125,7 @@ export default function AuditPanel() {
                                 <th>协议</th>
                                 <th>时长</th>
                                 <th>流量 ↓ / ↑</th>
-                                <th>回放</th>
+                                <th>操作</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -129,6 +151,14 @@ export default function AuditPanel() {
                                             title={a.history ? '回放该会话历史输出' : '无历史记录'}
                                         >
                                             回放
+                                        </button>
+                                        <button
+                                            className="au-replay-btn au-cmd-btn"
+                                            onClick={() => openCmdLog(a)}
+                                            disabled={!a.commandLog || loading}
+                                            title={a.commandLog ? '查看该会话操作记录 (命令留痕)' : '无命令记录'}
+                                        >
+                                            操作记录
                                         </button>
                                     </td>
                                 </tr>

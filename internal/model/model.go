@@ -29,6 +29,9 @@ type SshConfig struct {
 	ProxyPort     int    `json:"proxyPort"`
 	ProxyUser     string `json:"proxyUser"`
 	ProxyPassword string `json:"proxyPassword"`
+
+	// Keychain 凭据引用 (可选): 指定后密码从集中凭据解析 (一处修改全局生效)
+	CredentialID string `json:"credentialId"`
 }
 
 // FileEntry 文件/目录条目
@@ -59,18 +62,19 @@ type TransferTask struct {
 
 // StoredSession 保存的会话配置 (不含密码, 密码存系统凭据库)
 type StoredSession struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	Username    string `json:"username"`
-	Encoding    string `json:"encoding"`    // 输出编码: auto / utf-8 / gbk (空=auto)
-	HostKeyMode string `json:"hostKeyMode"` // 主机密钥校验: off / accept-new / strict (空=accept-new)
-	Group       string `json:"group"`       // 分组名 (空=未分组)
-	ProxyType   string `json:"proxyType"`   // ""(无) / http / socks5
-	ProxyHost   string `json:"proxyHost"`
-	ProxyPort   int    `json:"proxyPort"`
-	ProxyUser   string `json:"proxyUser"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Host         string `json:"host"`
+	Port         int    `json:"port"`
+	Username     string `json:"username"`
+	Encoding     string `json:"encoding"`    // 输出编码: auto / utf-8 / gbk (空=auto)
+	HostKeyMode  string `json:"hostKeyMode"` // 主机密钥校验: off / accept-new / strict (空=accept-new)
+	Group        string `json:"group"`       // 分组名 (空=未分组)
+	ProxyType    string `json:"proxyType"`   // ""(无) / http / socks5
+	ProxyHost    string `json:"proxyHost"`
+	ProxyPort    int    `json:"proxyPort"`
+	ProxyUser    string `json:"proxyUser"`
+	CredentialID string `json:"credentialId"` // 集中凭据引用 (空=使用会话自身密码)
 }
 
 // HistoryEntry 历史记录条目
@@ -113,18 +117,38 @@ type UpdateInfo struct {
 
 // AuditEntry 会话审计条目 (操作留痕, 内网运维/审计场景)
 type AuditEntry struct {
+	ID         string `json:"id"`
+	StartTime  string `json:"startTime"` // 连接开始 "2006-01-02 15:04:05"
+	EndTime    string `json:"endTime"`   // 连接结束 (空=进行中)
+	Duration   int64  `json:"duration"`  // 时长 (秒, 0=进行中)
+	Host       string `json:"host"`
+	Port       int    `json:"port"`
+	User       string `json:"user"`
+	Protocol   string `json:"protocol"` // ssh / telnet
+	BytesIn    int64  `json:"bytesIn"`
+	BytesOut   int64  `json:"bytesOut"`
+	History    string `json:"history"`    // 历史日志文件路径 (回放用, 空=无)
+	CommandLog string `json:"commandLog"` // 命令录制文件路径 (.cmd.log, 操作留痕, 空=无)
+	Label      string `json:"label"`      // 会话标签 user@host:port
+}
+
+// Credential 集中凭据 (Keychain): 多个会话可引用同一身份, 一处修改全局生效
+type Credential struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`     // 凭据名, 如 "生产环境 root"
+	Type     string `json:"type"`     // password / privateKey
+	Username string `json:"username"` // 登录用户
+	// Secret 密码内容或私钥内容 (不落库, 存系统凭据库; 列表接口不返回)
+	CreatedAt string `json:"createdAt"`
+}
+
+// CredentialListEntry 凭据列表条目 (不含 secret, 供 UI 展示)
+type CredentialListEntry struct {
 	ID        string `json:"id"`
-	StartTime string `json:"startTime"` // 连接开始 "2006-01-02 15:04:05"
-	EndTime   string `json:"endTime"`   // 连接结束 (空=进行中)
-	Duration  int64  `json:"duration"`  // 时长 (秒, 0=进行中)
-	Host      string `json:"host"`
-	Port      int    `json:"port"`
-	User      string `json:"user"`
-	Protocol  string `json:"protocol"` // ssh / telnet
-	BytesIn   int64  `json:"bytesIn"`
-	BytesOut  int64  `json:"bytesOut"`
-	History   string `json:"history"` // 历史日志文件路径 (回放用, 空=无)
-	Label     string `json:"label"`   // 会话标签 user@host:port
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Username  string `json:"username"`
+	CreatedAt string `json:"createdAt"`
 }
 
 // Snippet 命令片段 (快捷命令)

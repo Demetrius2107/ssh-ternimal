@@ -2353,6 +2353,16 @@ body.theme-light .home-empty {
     cursor: not-allowed;
 }
 
+.au-cmd-btn {
+    margin-left: 6px;
+    background: rgba(48, 209, 88, 0.15);
+    color: #5fd97e;
+}
+
+.au-cmd-btn:hover:not(:disabled) {
+    background: rgba(48, 209, 88, 0.3);
+}
+
 .audit-replay {
     display: flex;
     flex-direction: column;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
-import { SshSend, SshResize, ListSnippets } from '../wailsjs/go/main/App';
+import { SshSend, SshResize, ListSnippets, SessionMeta } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { THEMES, type ThemeName } from './themes';
@@ -220,9 +220,33 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
         setCtx(null);
     }
 
-    // 发送命令片段到当前会话 (自动补回车执行)
-    function sendSnippet(cmd: string) {
-        SshSend(sessionId, cmd + '\r');
+    // 发送命令片段到当前会话: 变量求值 ({host}/{user}/{port}/{date}) + 多行顺序执行 (宏)
+    async function sendSnippet(cmd: string) {
+        // 变量求值: 从会话元信息与当前日期填充占位符
+        let resolved = cmd;
+        try {
+            const meta = await SessionMeta(sessionId);
+            const map: Record<string, string> = {
+                host: meta[0] ?? '',
+                user: meta[1] ?? '',
+                port: String(meta[2] ?? ''),
+                date: new Date().toISOString().slice(0, 10),
+            };
+            resolved = cmd.replace(/\{(\w+)\}/g, (_, k: string) => map[k] ?? `{${k}}`);
+            // 未定义的占位符保留 {xxx}: 提示但不阻塞发送
+            const unresolved = resolved.match(/\{\w+\}/g);
+            if (unresolved) {
+                console.warn('片段含未定义变量:', [...new Set(unresolved)].join(', '));
+            }
+        } catch {
+            /* 会话元信息不可用: 使用原片段 */
+        }
+        // 顺序执行: 多行按行依次发送 (宏), 每行补回车
+        const lines = resolved.split('\n').filter((l) => l.trim() !== '');
+        for (const line of lines) {
+            SshSend(sessionId, line + '\r');
+            await new Promise((r) => setTimeout(r, 60)); // 宏执行间隔, 避免击穿远端
+        }
         setCtx(null);
     }
 
