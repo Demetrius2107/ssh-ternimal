@@ -237,3 +237,27 @@ export function StartTunnel(arg1, arg2, arg3, arg4) {
 export function StopTunnel(arg1) {
   return window['go']['main']['App']['StopTunnel'](arg1);
 }
+
+export function VaultExport(arg1) {
+  return window['go']['main']['App']['VaultExport'](arg1);
+}
+
+export function VaultImport(arg1, arg2) {
+  return window['go']['main']['App']['VaultImport'](arg1, arg2);
+}
+
+export function VncClose(arg1) {
+  return window['go']['main']['App']['VncClose'](arg1);
+}
+
+export function VncConnect(arg1, arg2, arg3) {
+  return window['go']['main']['App']['VncConnect'](arg1, arg2, arg3);
+}
+
+export function VncKeyEvent(arg1, arg2, arg3) {
+  return window['go']['main']['App']['VncKeyEvent'](arg1, arg2, arg3);
+}
+
+export function VncPointerEvent(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['VncPointerEvent'](arg1, arg2, arg3, arg4);
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,8 @@ import (
 	"ssh-terminal/internal/store"
 	"ssh-terminal/internal/telnetcore"
 	"ssh-terminal/internal/transfer"
+	"ssh-terminal/internal/vault"
+	"ssh-terminal/internal/vnccore"
 )
 
 // SshOutput 终端输出事件负载
@@ -80,6 +83,11 @@ type App struct {
 	tunnelListeners map[uint64]net.Listener
 	nextTunnelID    uint64
 	tunnelMu        sync.Mutex
+
+	// 内嵌 VNC 会话 (vncMu 保护)
+	vncMu       sync.Mutex
+	vncSessions map[uint64]*vnccore.Session
+	vncNextID   uint64
 }
 
 // NewApp 创建 App 实例
@@ -95,6 +103,7 @@ func NewApp() *App {
 		pendingHostKeys: make(map[string]ssh.PublicKey),
 		tunnels:         make(map[uint64]*model.Tunnel),
 		tunnelListeners: make(map[uint64]net.Listener),
+		vncSessions:     make(map[uint64]*vnccore.Session),
 		engine:          transfer.NewEngine(),
 	}
 }
@@ -1013,6 +1022,69 @@ func (a *App) ApplyUpdate(localPath string, silent bool) error {
 	return nil
 }
 
+// ---------- Vault 端到端加密备份 (云同步的数据载体) ----------
+
+// vaultPayload Vault 备份内容 (服务端不可解密, 仅导出文件可见)
+type vaultPayload struct {
+	Version    int            `json:"version"`
+	ExportedAt string         `json:"exportedAt"`
+	Sessions   []vaultSession `json:"sessions"`
+}
+
+type vaultSession struct {
+	model.StoredSession
+	Password      string `json:"password"`
+	ProxyPassword string `json:"proxyPassword"`
+}
+
+// VaultExport 导出全部会话与凭据为端到端加密字符串 (AES-GCM + 用户密码派生密钥)
+func (a *App) VaultExport(password string) (string, error) {
+	if a.store == nil {
+		return "", errors.New("会话存储未初始化")
+	}
+	list, err := a.store.List()
+	if err != nil {
+		return "", err
+	}
+	payload := vaultPayload{Version: 1, ExportedAt: time.Now().Format("2006-01-02 15:04:05")}
+	for _, s := range list {
+		vs := vaultSession{StoredSession: s}
+		vs.Password, _ = keyring.Get(aiKeyringService, s.ID)
+		vs.ProxyPassword, _ = keyring.Get(aiKeyringService, s.ID+":proxy")
+		payload.Sessions = append(payload.Sessions, vs)
+	}
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return vault.Encrypt(data, password)
+}
+
+// VaultImport 从加密备份恢复全部会话与凭据 (覆盖同名 ID, 保留密码)
+func (a *App) VaultImport(encoded, password string) error {
+	if a.store == nil {
+		return errors.New("会话存储未初始化")
+	}
+	data, err := vault.Decrypt(encoded, password)
+	if err != nil {
+		return err
+	}
+	var payload vaultPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return errors.New("备份内容格式无效")
+	}
+	for _, vs := range payload.Sessions {
+		id, err := a.store.Save(vs.StoredSession, vs.Password)
+		if err != nil {
+			return fmt.Errorf("恢复会话 %s 失败: %v", vs.Name, err)
+		}
+		if vs.ProxyPassword != "" {
+			_ = keyring.Set(aiKeyringService, id+":proxy", vs.ProxyPassword)
+		}
+	}
+	return nil
+}
+
 // ---------- 本地文件 ----------
 
 // LocalListDir 列出本地目录
@@ -1117,6 +1189,76 @@ func findVncViewer() (string, error) {
 		return p, nil
 	}
 	return "", errors.New("未检测到 VNC 查看器，请先安装 TigerVNC / RealVNC / UltraVNC")
+}
+
+// ---------- 内嵌 VNC (自研 RFB 客户端) ----------
+
+// VncFrame 帧事件负载
+type VncFrame struct {
+	SessionID uint64 `json:"sessionId"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Data      string `json:"data"` // RGBA base64
+}
+
+// VncConnect 建立内嵌 VNC 连接, 帧缓冲经 vnc-frame 事件推送, 返回会话 ID
+func (a *App) VncConnect(host string, port int, password string) (uint64, error) {
+	s, err := vnccore.Connect(vnccore.Options{Host: host, Port: port, Password: password})
+	if err != nil {
+		return 0, err
+	}
+	a.vncMu.Lock()
+	a.vncNextID++
+	id := a.vncNextID
+	a.vncSessions[id] = s
+	a.vncMu.Unlock()
+
+	s.FrameHandler(func(w, h int, rgba []byte) {
+		runtime.EventsEmit(a.ctx, "vnc-frame", VncFrame{
+			SessionID: id, Width: w, Height: h,
+			Data: base64.StdEncoding.EncodeToString(rgba),
+		})
+	})
+	go func() {
+		_ = s.Start()
+		a.vncMu.Lock()
+		delete(a.vncSessions, id)
+		a.vncMu.Unlock()
+	}()
+	return id, nil
+}
+
+// VncKeyEvent 发送键盘事件 (keysym: X11 keysym, ASCII 直接用字符码点)
+func (a *App) VncKeyEvent(id uint64, keysym uint32, down bool) error {
+	a.vncMu.Lock()
+	s := a.vncSessions[id]
+	a.vncMu.Unlock()
+	if s == nil {
+		return errors.New("VNC 会话不存在")
+	}
+	return s.KeyEvent(keysym, down)
+}
+
+// VncPointerEvent 发送鼠标事件 (buttonMask: 1=左 2=中 4=右; 绝对坐标)
+func (a *App) VncPointerEvent(id uint64, buttonMask byte, x, y uint16) error {
+	a.vncMu.Lock()
+	s := a.vncSessions[id]
+	a.vncMu.Unlock()
+	if s == nil {
+		return errors.New("VNC 会话不存在")
+	}
+	return s.PointerEvent(buttonMask, x, y)
+}
+
+// VncClose 关闭 VNC 会话
+func (a *App) VncClose(id uint64) {
+	a.vncMu.Lock()
+	s := a.vncSessions[id]
+	delete(a.vncSessions, id)
+	a.vncMu.Unlock()
+	if s != nil {
+		s.Close()
+	}
 }
 
 // ---------- 会话管理 ----------

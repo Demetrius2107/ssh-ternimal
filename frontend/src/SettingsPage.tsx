@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AiSetKey, AiConfigure, AiStatus, CheckUpdate, DownloadUpdate, ApplyUpdate } from '../wailsjs/go/main/App';
+import { AiSetKey, AiConfigure, AiStatus, CheckUpdate, DownloadUpdate, ApplyUpdate, VaultExport, VaultImport } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 import { THEMES, THEME_LIST, type ThemeName } from './themes';
 import { SHORTCUT_ACTIONS, loadShortcuts, saveShortcuts, defaultShortcuts, formatShortcut, isModifierOnly } from './shortcuts';
@@ -24,7 +24,117 @@ const FONT_OPTIONS: Array<[string, string]> = [
     ['monospace', '系统等宽'],
 ];
 
-type SectionId = 'appearance' | 'terminal' | 'shortcuts' | 'ai' | 'about';
+type SectionId = 'appearance' | 'terminal' | 'shortcuts' | 'ai' | 'vault' | 'about';
+
+// VaultSection Vault 端到端加密备份: 导出全部会话/凭据为加密串, 或从加密串恢复
+function VaultSection() {
+    const [password, setPassword] = useState('');
+    const [importData, setImportData] = useState('');
+    const [exported, setExported] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [msg, setMsg] = useState('');
+    const [err, setErr] = useState('');
+
+    async function doExport() {
+        if (!password) {
+            setErr('请设置备份密码 (用于加密, 恢复时需输入同一密码)');
+            return;
+        }
+        setBusy(true);
+        setErr('');
+        setMsg('');
+        try {
+            const data = await VaultExport(password);
+            setExported(data);
+            setMsg(`已导出加密备份 (${Math.round(data.length / 1024)} KB)，请妥善保存`);
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function doImport() {
+        if (!importData.trim() || !password) {
+            setErr('请粘贴备份内容并输入备份密码');
+            return;
+        }
+        setBusy(true);
+        setErr('');
+        setMsg('');
+        try {
+            await VaultImport(importData.trim(), password);
+            setMsg('恢复完成 ✅ 会话与凭据已导入');
+            setImportData('');
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    function copyExport() {
+        if (!exported) return;
+        navigator.clipboard
+            .writeText(exported)
+            .then(() => setMsg('备份内容已复制到剪贴板'))
+            .catch(() => setErr('复制失败，请手动选择复制'));
+    }
+
+    return (
+        <div className="sp-section">
+            <h2 className="sp-h2">Vault 备份</h2>
+            <p className="sp-desc">
+                端到端加密备份（AES-256-GCM）：将全部会话配置与凭据导出为加密字符串，可保存到任意位置或用于多端同步；恢复时输入同一密码即可解密。
+            </p>
+            <div className="set-group">
+                <div className="set-label">备份密码</div>
+                <input
+                    className="set-input"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="加密/解密密码（务必牢记）"
+                />
+            </div>
+            <div className="set-group">
+                <div className="set-label">导出备份</div>
+                <button className="set-save" onClick={doExport} disabled={busy || !password}>
+                    {busy ? '处理中...' : '导出加密备份'}
+                </button>
+                {exported && (
+                    <>
+                        <textarea
+                            className="vault-out"
+                            value={exported}
+                            readOnly
+                            rows={4}
+                            onClick={(e) => e.currentTarget.select()}
+                        />
+                        <button className="set-save" onClick={copyExport}>
+                            复制备份内容
+                        </button>
+                    </>
+                )}
+            </div>
+            <div className="set-group">
+                <div className="set-label">从备份恢复</div>
+                <textarea
+                    className="vault-out"
+                    value={importData}
+                    onChange={(e) => setImportData(e.target.value)}
+                    placeholder="粘贴加密备份内容..."
+                    rows={3}
+                />
+                <button className="set-save" onClick={doImport} disabled={busy || !importData.trim() || !password}>
+                    导入并恢复
+                </button>
+            </div>
+            {msg && <div className="tunnel-msg">{msg}</div>}
+            {err && <div className="error-box">{err}</div>}
+        </div>
+    );
+}
 
 // AboutSection 关于与更新: 版本信息 + 检查更新/下载/应用
 function AboutSection() {
@@ -125,6 +235,7 @@ const SECTIONS: Array<{ id: SectionId; label: string }> = [
     { id: 'terminal', label: '终端' },
     { id: 'shortcuts', label: '快捷键' },
     { id: 'ai', label: 'AI 辅助' },
+    { id: 'vault', label: 'Vault 备份' },
     { id: 'about', label: '关于' },
 ];
 
@@ -391,6 +502,10 @@ export default function SettingsPage({ theme, onTheme, fontFamily, onFontFamily,
                         {aiMsg && <div className="tunnel-msg">{aiMsg}</div>}
                         {aiErr && <div className="error-box">{aiErr}</div>}
                     </div>
+                )}
+
+                {section === 'vault' && (
+                    <VaultSection />
                 )}
 
                 {section === 'about' && (

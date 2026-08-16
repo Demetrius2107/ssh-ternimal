@@ -119,3 +119,15 @@ export function SshSend(arg1:number,arg2:string):Promise<void>;
 export function StartTunnel(arg1:number,arg2:string,arg3:number,arg4:string):Promise<number>;
 
 export function StopTunnel(arg1:number):Promise<void>;
+
+export function VaultExport(arg1:string):Promise<string>;
+
+export function VaultImport(arg1:string,arg2:string):Promise<void>;
+
+export function VncClose(arg1:number):Promise<void>;
+
+export function VncConnect(arg1:string,arg2:number,arg3:string):Promise<number>;
+
+export function VncKeyEvent(arg1:number,arg2:number,arg3:boolean):Promise<void>;
+
+export function VncPointerEvent(arg1:number,arg2:number,arg3:number,arg4:number):Promise<void>;

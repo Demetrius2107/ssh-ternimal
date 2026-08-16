@@ -5,6 +5,7 @@ import TerminalView, { ThemeName } from './TerminalView';
 import FilePanel from './FilePanel';
 import AiPanel from './AiPanel';
 import EditorPanel from './EditorPanel';
+import VncPanel from './VncPanel';
 
 interface Props {
     sessionId: number;
@@ -31,7 +32,7 @@ function fmtRate(bps: number): string {
 
 // Workspace 单个会话的工作区: 终端/文件 子标签页 + 底部网络状态栏
 export default function Workspace({ sessionId, active, theme, fontFamily, fontSize, onClose, onOpenSettings }: Props) {
-    const [activeTab, setActiveTab] = useState<'terminal' | 'files' | 'ai' | 'editor'>('terminal');
+    const [activeTab, setActiveTab] = useState<'terminal' | 'files' | 'ai' | 'editor' | 'vnc'>('terminal');
     const [metrics, setMetrics] = useState<model.Metrics | null>(null);
     const [rate, setRate] = useState({ in: 0, out: 0 });
     const [duration, setDuration] = useState(0);
@@ -88,6 +89,9 @@ export default function Workspace({ sessionId, active, theme, fontFamily, fontSi
                 <button className={activeTab === 'editor' ? 'tab active' : 'tab'} onClick={() => setActiveTab('editor')}>
                     编辑
                 </button>
+                <button className={activeTab === 'vnc' ? 'tab active' : 'tab'} onClick={() => setActiveTab('vnc')}>
+                    桌面
+                </button>
                 <span className="tab-spacer" />
                 <button className="tab-disconnect" onClick={onClose}>
                     断开
@@ -104,6 +108,9 @@ export default function Workspace({ sessionId, active, theme, fontFamily, fontSi
             </div>
             <div className={`tab-pane ${activeTab === 'editor' ? '' : 'hidden'}`}>
                 <EditorPanel sessionId={sessionId} />
+            </div>
+            <div className={`tab-pane ${activeTab === 'vnc' ? '' : 'hidden'}`}>
+                <VncPanel />
             </div>
             <div className="status-bar">
                 <span className="sb-dot" />
