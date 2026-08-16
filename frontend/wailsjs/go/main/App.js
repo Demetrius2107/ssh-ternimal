@@ -194,6 +194,30 @@ export function SearchHistory(arg1) {
   return window['go']['main']['App']['SearchHistory'](arg1);
 }
 
+export function SyncListDevices(arg1) {
+  return window['go']['main']['App']['SyncListDevices'](arg1);
+}
+
+export function SyncLogin(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SyncLogin'](arg1, arg2, arg3);
+}
+
+export function SyncPull(arg1, arg2) {
+  return window['go']['main']['App']['SyncPull'](arg1, arg2);
+}
+
+export function SyncPush(arg1, arg2) {
+  return window['go']['main']['App']['SyncPush'](arg1, arg2);
+}
+
+export function SyncRegister(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SyncRegister'](arg1, arg2, arg3, arg4);
+}
+
+export function SyncRevokeDevice(arg1, arg2) {
+  return window['go']['main']['App']['SyncRevokeDevice'](arg1, arg2);
+}
+
 export function SessionMeta(arg1) {
   return window['go']['main']['App']['SessionMeta'](arg1);
 }

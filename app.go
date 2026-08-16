@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -75,6 +76,8 @@ type App struct {
 	aiProvider     string             // deepseek / ollama
 	aiModel        string             // 模型档位
 	aiMonthlyLimit int64              // 月度 token 限额
+
+	syncCli *syncClient // 云同步 HTTP 客户端 (baseURL 变更时重建)
 
 	engine *transfer.Engine
 	store  *store.Store
@@ -1166,6 +1169,166 @@ func (a *App) VaultImport(encoded, password string) error {
 		}
 	}
 	return nil
+}
+
+// ---------- 云同步客户端对接 (零知识: 本地加密后推送密文) ----------
+
+// syncClient 云同步 HTTP 客户端 (复用 vault 加密, 服务端只收密文)
+type syncClient struct {
+	baseURL string
+	token   string
+	http    *http.Client
+}
+
+func (c *syncClient) call(method, path string, body any, out any) error {
+	var reader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(data)
+	}
+	req, err := http.NewRequest(method, c.baseURL+path, reader)
+	if err != nil {
+		return err
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("云同步服务不可达: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		var e struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&e)
+		return fmt.Errorf("云同步失败 (%d): %s", resp.StatusCode, e.Error)
+	}
+	if out != nil {
+		return json.NewDecoder(resp.Body).Decode(out)
+	}
+	return nil
+}
+
+// a.syncBase 返回同步客户端 (baseURL 由前端提供并缓存)
+func (a *App) syncBase(baseURL string) *syncClient {
+	if a.syncCli == nil || a.syncCli.baseURL != strings.TrimRight(baseURL, "/") {
+		a.syncCli = &syncClient{
+			baseURL: strings.TrimRight(baseURL, "/"),
+			http:    &http.Client{Timeout: 30 * time.Second},
+		}
+	}
+	return a.syncCli
+}
+
+// SyncRegister 注册云同步账户并登录
+func (a *App) SyncRegister(baseURL, email, password, device string) error {
+	if email == "" || len(password) < 6 || device == "" {
+		return errors.New("邮箱、密码(≥6位)、设备名不能为空")
+	}
+	c := a.syncBase(baseURL)
+	var out struct {
+		Token string `json:"token"`
+	}
+	if err := c.call("POST", "/api/register", map[string]string{
+		"email": email, "password": password, "device": device,
+	}, &out); err != nil {
+		return err
+	}
+	c.token = out.Token
+	return nil
+}
+
+// SyncLogin 登录云同步账户
+func (a *App) SyncLogin(baseURL, email, password string) error {
+	if email == "" || password == "" {
+		return errors.New("邮箱和密码不能为空")
+	}
+	c := a.syncBase(baseURL)
+	var out struct {
+		Token string `json:"token"`
+	}
+	if err := c.call("POST", "/api/login", map[string]string{
+		"email": email, "password": password,
+	}, &out); err != nil {
+		return err
+	}
+	c.token = out.Token
+	return nil
+}
+
+// SyncPush 推送本地 Vault 到服务端 (本地加密, 零知识)
+func (a *App) SyncPush(baseURL, password string) error {
+	if a.syncCli == nil || a.syncCli.token == "" {
+		return errors.New("请先注册或登录云同步账户")
+	}
+	// 拉取当前版本号
+	var cur struct {
+		Version int64 `json:"version"`
+	}
+	if err := a.syncCli.call("GET", "/api/vault", nil, &cur); err != nil {
+		return err
+	}
+	// 本地加密导出
+	enc, err := a.VaultExport(password)
+	if err != nil {
+		return err
+	}
+	var out struct {
+		Version int64 `json:"version"`
+	}
+	err = a.syncCli.call("PUT", "/api/vault", map[string]any{
+		"version": cur.Version, "ciphertext": enc,
+	}, &out)
+	if err != nil && strings.Contains(err.Error(), "版本冲突") {
+		// 冲突: 拉取服务端最新 → 提示手动合并 (以本地为准重新播种)
+		return errors.New("检测到版本冲突: 服务端已有更新的数据, 请先拉取合并或确认以本地为准")
+	}
+	return err
+}
+
+// SyncPull 从服务端拉取 Vault 并恢复到本地 (本地解密)
+func (a *App) SyncPull(baseURL, password string) error {
+	if a.syncCli == nil || a.syncCli.token == "" {
+		return errors.New("请先注册或登录云同步账户")
+	}
+	var row struct {
+		Ciphertext string `json:"ciphertext"`
+	}
+	if err := a.syncCli.call("GET", "/api/vault", nil, &row); err != nil {
+		return err
+	}
+	if row.Ciphertext == "" {
+		return errors.New("服务端暂无备份数据")
+	}
+	return a.VaultImport(row.Ciphertext, password)
+}
+
+// SyncListDevices 列出云同步账户设备
+func (a *App) SyncListDevices(baseURL string) ([]map[string]string, error) {
+	if a.syncCli == nil || a.syncCli.token == "" {
+		return nil, errors.New("请先注册或登录")
+	}
+	var out []map[string]string
+	if err := a.syncCli.call("GET", "/api/devices", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SyncRevokeDevice 撤销云同步设备
+func (a *App) SyncRevokeDevice(baseURL, deviceID string) error {
+	if a.syncCli == nil || a.syncCli.token == "" {
+		return errors.New("请先注册或登录")
+	}
+	return a.syncCli.call("DELETE", "/api/devices/"+deviceID, nil, nil)
 }
 
 // ---------- 本地文件 ----------

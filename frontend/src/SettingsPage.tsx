@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AiSetKey, AiConfigure, AiStatus, CheckUpdate, DownloadUpdate, ApplyUpdate, VaultExport, VaultImport, ListCredentials, SaveCredential, DeleteCredential } from '../wailsjs/go/main/App';
+import { AiSetKey, AiConfigure, AiStatus, CheckUpdate, DownloadUpdate, ApplyUpdate, VaultExport, VaultImport, ListCredentials, SaveCredential, DeleteCredential, SyncRegister, SyncLogin, SyncPush, SyncPull, SyncListDevices, SyncRevokeDevice } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 import { THEMES, THEME_LIST, type ThemeName } from './themes';
 import { SHORTCUT_ACTIONS, loadShortcuts, saveShortcuts, defaultShortcuts, formatShortcut, isModifierOnly } from './shortcuts';
@@ -24,7 +24,109 @@ const FONT_OPTIONS: Array<[string, string]> = [
     ['monospace', '系统等宽'],
 ];
 
-type SectionId = 'appearance' | 'terminal' | 'shortcuts' | 'ai' | 'credentials' | 'vault' | 'about';
+type SectionId = 'appearance' | 'terminal' | 'shortcuts' | 'ai' | 'credentials' | 'sync' | 'vault' | 'about';
+
+// SyncSection 云同步 (Termius 模式): 注册/登录 → 本地加密推送 / 拉取合并 (零知识)
+function SyncSection() {
+    const [baseURL, setBaseURL] = useState(() => localStorage.getItem('syncBaseURL') || 'http://127.0.0.1:8080');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [device, setDevice] = useState(() => localStorage.getItem('syncDevice') || '我的电脑');
+    const [vaultPwd, setVaultPwd] = useState('');
+    const [devices, setDevices] = useState<Record<string, string>[]>([]);
+    const [busy, setBusy] = useState(false);
+    const [msg, setMsg] = useState('');
+    const [err, setErr] = useState('');
+
+    useEffect(() => {
+        localStorage.setItem('syncBaseURL', baseURL);
+        localStorage.setItem('syncDevice', device);
+    }, [baseURL, device]);
+
+    async function run(fn: () => Promise<void>, okMsg: string) {
+        setBusy(true);
+        setErr('');
+        setMsg('');
+        try {
+            await fn();
+            setMsg(okMsg);
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function loadDevices() {
+        try {
+            setDevices((await SyncListDevices(baseURL)) ?? []);
+        } catch {
+            /* 未登录时忽略 */
+        }
+    }
+
+    return (
+        <div className="sp-section">
+            <h2 className="sp-h2">云同步 (Vault)</h2>
+            <p className="sp-desc">
+                端到端加密同步：Vault 数据在本地加密后推送到你的服务端，服务端不可解密（零知识）。
+                需先运行 <code>server</code> 模块并配置地址。
+            </p>
+            <div className="set-group">
+                <div className="set-label">服务端地址</div>
+                <input className="set-input" value={baseURL} onChange={(e) => setBaseURL(e.target.value)} placeholder="http://127.0.0.1:8080" />
+            </div>
+            <div className="set-group">
+                <div className="set-label">账户</div>
+                <input className="set-input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="邮箱" />
+                <input className="set-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密码 (注册需 ≥6 位)" />
+                <input className="set-input" value={device} onChange={(e) => setDevice(e.target.value)} placeholder="设备名" />
+                <div className="upd-actions">
+                    <button className="set-save" onClick={() => run(() => SyncRegister(baseURL, email, password, device), '注册成功，已登录')} disabled={busy}>
+                        注册
+                    </button>
+                    <button className="set-save" onClick={() => run(() => SyncLogin(baseURL, email, password), '登录成功')} disabled={busy}>
+                        登录
+                    </button>
+                    <button className="set-save" onClick={loadDevices} disabled={busy}>
+                        设备列表
+                    </button>
+                </div>
+                {devices.length > 0 && (
+                    <div className="sc-list">
+                        {devices.map((d) => (
+                            <div key={d.id} className="sc-item">
+                                <div className="sc-info">
+                                    <div className="sc-label">{d.name}</div>
+                                    <div className="sc-desc">{d.status} · 最近活跃 {d.lastSeen}</div>
+                                </div>
+                                {d.status === 'active' && (
+                                    <button className="si-del" onClick={() => run(() => SyncRevokeDevice(baseURL, d.id), '设备已撤销')}>
+                                        撤销
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+            <div className="set-group">
+                <div className="set-label">Vault 同步</div>
+                <input className="set-input" type="password" value={vaultPwd} onChange={(e) => setVaultPwd(e.target.value)} placeholder="Vault 备份密码 (加密/解密密钥)" />
+                <div className="upd-actions">
+                    <button className="set-save" onClick={() => run(() => SyncPush(baseURL, vaultPwd), '已推送到服务端')} disabled={busy || !vaultPwd}>
+                        推送到服务端
+                    </button>
+                    <button className="set-save" onClick={() => run(() => SyncPull(baseURL, vaultPwd), '已从服务端拉取并恢复')} disabled={busy || !vaultPwd}>
+                        从服务端拉取
+                    </button>
+                </div>
+            </div>
+            {msg && <div className="tunnel-msg">{msg}</div>}
+            {err && <div className="error-box">{err}</div>}
+        </div>
+    );
+}
 
 // CredentialSection 集中凭据管理 (Keychain): 一处修改, 引用该凭据的会话全局生效
 function CredentialSection() {
@@ -334,6 +436,7 @@ const SECTIONS: Array<{ id: SectionId; label: string }> = [
     { id: 'shortcuts', label: '快捷键' },
     { id: 'ai', label: 'AI 辅助' },
     { id: 'credentials', label: '凭据' },
+    { id: 'sync', label: '云同步' },
     { id: 'vault', label: 'Vault 备份' },
     { id: 'about', label: '关于' },
 ];
@@ -605,6 +708,10 @@ export default function SettingsPage({ theme, onTheme, fontFamily, onFontFamily,
 
                 {section === 'credentials' && (
                     <CredentialSection />
+                )}
+
+                {section === 'sync' && (
+                    <SyncSection />
                 )}
 
                 {section === 'vault' && (

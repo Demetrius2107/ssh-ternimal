@@ -98,6 +98,18 @@ export function SaveSnippet(arg1:string,arg2:string,arg3:string):Promise<string>
 
 export function SearchHistory(arg1:string):Promise<Array<model.HistoryMatch>>;
 
+export function SyncListDevices(arg1:string):Promise<Array<Record<string,string>>>;
+
+export function SyncLogin(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function SyncPull(arg1:string,arg2:string):Promise<void>;
+
+export function SyncPush(arg1:string,arg2:string):Promise<void>;
+
+export function SyncRegister(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function SyncRevokeDevice(arg1:string,arg2:string):Promise<void>;
+
 export function SessionMeta(arg1:number):Promise<string>;
 
 export function SftpChmod(arg1:number,arg2:string,arg3:number):Promise<void>;
