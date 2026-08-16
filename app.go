@@ -1075,6 +1075,50 @@ func (a *App) LaunchRdp(host string, port int, username string) error {
 	return nil
 }
 
+// LaunchVnc 外接 VNC 查看器: 探测系统已安装的 VNC 客户端 (TigerVNC/RealVNC/UltraVNC) 并启动
+func (a *App) LaunchVnc(host string, port int) error {
+	if host == "" {
+		return errors.New("主机不能为空")
+	}
+	if port <= 0 {
+		port = 5900 // VNC 默认端口
+	}
+	vnc, err := findVncViewer()
+	if err != nil {
+		return err
+	}
+	// VNC 查看器统一支持 host:port 参数
+	cmd := exec.Command(vnc, fmt.Sprintf("%s:%d", host, port))
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("启动 VNC 查看器失败: %v", err)
+	}
+	return nil
+}
+
+// findVncViewer 在常见安装路径中探测 VNC 查看器可执行文件
+func findVncViewer() (string, error) {
+	// TigerVNC: vncviewer.exe; RealVNC: vncviewer.exe; UltraVNC: vncviewer.exe
+	// 常见路径按优先级排列
+	candidates := []string{
+		`C:\Program Files\TigerVNC\vncviewer.exe`,
+		`C:\Program Files (x86)\TigerVNC\vncviewer.exe`,
+		`C:\Program Files\RealVNC\VNC Viewer\vncviewer.exe`,
+		`C:\Program Files (x86)\RealVNC\VNC Viewer\vncviewer.exe`,
+		`C:\Program Files\UltraVNC\vncviewer.exe`,
+		`C:\Program Files (x86)\UltraVNC\vncviewer.exe`,
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+	// 兜底: 尝试 PATH 中的 vncviewer
+	if p, err := exec.LookPath("vncviewer"); err == nil {
+		return p, nil
+	}
+	return "", errors.New("未检测到 VNC 查看器，请先安装 TigerVNC / RealVNC / UltraVNC")
+}
+
 // ---------- 会话管理 ----------
 
 // SaveSession 保存会话配置, 密码存系统凭据库, 返回会话 ID

@@ -98,6 +98,10 @@ export function LaunchRdp(arg1, arg2, arg3) {
   return window['go']['main']['App']['LaunchRdp'](arg1, arg2, arg3);
 }
 
+export function LaunchVnc(arg1, arg2) {
+  return window['go']['main']['App']['LaunchVnc'](arg1, arg2);
+}
+
 export function ListAudit() {
   return window['go']['main']['App']['ListAudit']();
 }

@@ -8,6 +8,7 @@ import {
     LoadSession,
     PickFile,
     LaunchRdp,
+    LaunchVnc,
     AcceptHostKey,
     MoveSession,
 } from '../wailsjs/go/main/App';
@@ -187,6 +188,16 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
         if (!host) return;
         try {
             await LaunchRdp(host, port, username);
+            setError('');
+        } catch (e: any) {
+            setError(e?.message ?? String(e));
+        }
+    }
+
+    async function launchVnc() {
+        if (!host) return;
+        try {
+            await LaunchVnc(host, port);
             setError('');
         } catch (e: any) {
             setError(e?.message ?? String(e));
@@ -489,6 +500,9 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                     </button>
                     <button type="button" onClick={launchRdp} disabled={!host} title="用系统 mstsc 打开远程桌面">
                         🖥 远程桌面
+                    </button>
+                    <button type="button" onClick={launchVnc} disabled={!host} title="用系统 VNC 查看器打开 (需安装 TigerVNC/RealVNC/UltraVNC)">
+                        🖥 VNC 桌面
                     </button>
                 </div>
             </form>

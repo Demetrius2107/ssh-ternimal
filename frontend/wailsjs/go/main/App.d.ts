@@ -50,6 +50,8 @@ export function GetSysMetricsHistory(arg1:number):Promise<Array<model.SysMetrics
 
 export function LaunchRdp(arg1:string,arg2:number,arg3:string):Promise<void>;
 
+export function LaunchVnc(arg1:string,arg2:number):Promise<void>;
+
 export function ListAudit():Promise<Array<model.AuditEntry>>;
 
 export function ListGroups():Promise<Array<string>>;
