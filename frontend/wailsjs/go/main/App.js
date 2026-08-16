@@ -34,6 +34,10 @@ export function CheckUpdate() {
   return window['go']['main']['App']['CheckUpdate']();
 }
 
+export function ClearAlerts() {
+  return window['go']['main']['App']['ClearAlerts']();
+}
+
 export function ClearAudit() {
   return window['go']['main']['App']['ClearAudit']();
 }
@@ -54,6 +58,10 @@ export function DeleteSnippet(arg1) {
   return window['go']['main']['App']['DeleteSnippet'](arg1);
 }
 
+export function DeleteTask(arg1) {
+  return window['go']['main']['App']['DeleteTask'](arg1);
+}
+
 export function DownloadUpdate(arg1) {
   return window['go']['main']['App']['DownloadUpdate'](arg1);
 }
@@ -72,6 +80,10 @@ export function EditorSaveLocal(arg1, arg2) {
 
 export function EditorSaveRemote(arg1, arg2, arg3) {
   return window['go']['main']['App']['EditorSaveRemote'](arg1, arg2, arg3);
+}
+
+export function GetAlertConfig() {
+  return window['go']['main']['App']['GetAlertConfig']();
 }
 
 export function GetDiskUsage(arg1) {
@@ -106,6 +118,10 @@ export function LaunchVnc(arg1, arg2) {
   return window['go']['main']['App']['LaunchVnc'](arg1, arg2);
 }
 
+export function ListAlerts() {
+  return window['go']['main']['App']['ListAlerts']();
+}
+
 export function ListAudit() {
   return window['go']['main']['App']['ListAudit']();
 }
@@ -128,6 +144,10 @@ export function ListSessions() {
 
 export function ListSnippets() {
   return window['go']['main']['App']['ListSnippets']();
+}
+
+export function ListTasks() {
+  return window['go']['main']['App']['ListTasks']();
 }
 
 export function ListTunnels() {
@@ -178,6 +198,10 @@ export function ReadHistory(arg1) {
   return window['go']['main']['App']['ReadHistory'](arg1);
 }
 
+export function SaveAlertConfig(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['SaveAlertConfig'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function SaveCredential(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SaveCredential'](arg1, arg2, arg3, arg4);
 }
@@ -190,32 +214,12 @@ export function SaveSnippet(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveSnippet'](arg1, arg2, arg3);
 }
 
+export function SaveTask(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['SaveTask'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
 export function SearchHistory(arg1) {
   return window['go']['main']['App']['SearchHistory'](arg1);
-}
-
-export function SyncListDevices(arg1) {
-  return window['go']['main']['App']['SyncListDevices'](arg1);
-}
-
-export function SyncLogin(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SyncLogin'](arg1, arg2, arg3);
-}
-
-export function SyncPull(arg1, arg2) {
-  return window['go']['main']['App']['SyncPull'](arg1, arg2);
-}
-
-export function SyncPush(arg1, arg2) {
-  return window['go']['main']['App']['SyncPush'](arg1, arg2);
-}
-
-export function SyncRegister(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['SyncRegister'](arg1, arg2, arg3, arg4);
-}
-
-export function SyncRevokeDevice(arg1, arg2) {
-  return window['go']['main']['App']['SyncRevokeDevice'](arg1, arg2);
 }
 
 export function SessionMeta(arg1) {
@@ -280,6 +284,34 @@ export function StartTunnel(arg1, arg2, arg3, arg4) {
 
 export function StopTunnel(arg1) {
   return window['go']['main']['App']['StopTunnel'](arg1);
+}
+
+export function SyncListDevices(arg1) {
+  return window['go']['main']['App']['SyncListDevices'](arg1);
+}
+
+export function SyncLogin(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SyncLogin'](arg1, arg2, arg3);
+}
+
+export function SyncPull(arg1, arg2) {
+  return window['go']['main']['App']['SyncPull'](arg1, arg2);
+}
+
+export function SyncPush(arg1, arg2) {
+  return window['go']['main']['App']['SyncPush'](arg1, arg2);
+}
+
+export function SyncRegister(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SyncRegister'](arg1, arg2, arg3, arg4);
+}
+
+export function SyncRevokeDevice(arg1, arg2) {
+  return window['go']['main']['App']['SyncRevokeDevice'](arg1, arg2);
+}
+
+export function TestAlert(arg1) {
+  return window['go']['main']['App']['TestAlert'](arg1);
 }
 
 export function VaultExport(arg1) {

@@ -417,3 +417,78 @@ export namespace model {
 
 }
 
+export namespace store {
+	
+	export class AlertConfig {
+	    enabled: boolean;
+	    cpuThreshold: number;
+	    memThreshold: number;
+	    diskThreshold: number;
+	    webhookUrl: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AlertConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.cpuThreshold = source["cpuThreshold"];
+	        this.memThreshold = source["memThreshold"];
+	        this.diskThreshold = source["diskThreshold"];
+	        this.webhookUrl = source["webhookUrl"];
+	    }
+	}
+	export class AlertRecord {
+	    id: string;
+	    time: string;
+	    session: string;
+	    metric: string;
+	    value: number;
+	    threshold: number;
+	    type: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AlertRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.time = source["time"];
+	        this.session = source["session"];
+	        this.metric = source["metric"];
+	        this.value = source["value"];
+	        this.threshold = source["threshold"];
+	        this.type = source["type"];
+	    }
+	}
+	export class Task {
+	    id: string;
+	    name: string;
+	    sessionId: number;
+	    intervalSeconds: number;
+	    command: string;
+	    enabled: boolean;
+	    lastRun: string;
+	    lastError: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Task(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.sessionId = source["sessionId"];
+	        this.intervalSeconds = source["intervalSeconds"];
+	        this.command = source["command"];
+	        this.enabled = source["enabled"];
+	        this.lastRun = source["lastRun"];
+	        this.lastError = source["lastError"];
+	    }
+	}
+
+}
+

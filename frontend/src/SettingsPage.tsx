@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { AiSetKey, AiConfigure, AiStatus, CheckUpdate, DownloadUpdate, ApplyUpdate, VaultExport, VaultImport, ListCredentials, SaveCredential, DeleteCredential, SyncRegister, SyncLogin, SyncPush, SyncPull, SyncListDevices, SyncRevokeDevice } from '../wailsjs/go/main/App';
-import { model } from '../wailsjs/go/models';
+import { AiSetKey, AiConfigure, AiStatus, CheckUpdate, DownloadUpdate, ApplyUpdate, VaultExport, VaultImport, ListCredentials, SaveCredential, DeleteCredential, SyncRegister, SyncLogin, SyncPush, SyncPull, SyncListDevices, SyncRevokeDevice, GetAlertConfig, SaveAlertConfig, ListAlerts, ClearAlerts, TestAlert, ListTasks, SaveTask, DeleteTask } from '../wailsjs/go/main/App';
+import { model, store } from '../wailsjs/go/models';
 import { THEMES, THEME_LIST, type ThemeName } from './themes';
 import { SHORTCUT_ACTIONS, loadShortcuts, saveShortcuts, defaultShortcuts, formatShortcut, isModifierOnly } from './shortcuts';
 
@@ -24,7 +24,246 @@ const FONT_OPTIONS: Array<[string, string]> = [
     ['monospace', '系统等宽'],
 ];
 
-type SectionId = 'appearance' | 'terminal' | 'shortcuts' | 'ai' | 'credentials' | 'sync' | 'vault' | 'about';
+type SectionId = 'appearance' | 'terminal' | 'shortcuts' | 'ai' | 'credentials' | 'sync' | 'alerts' | 'tasks' | 'vault' | 'about';
+
+// TaskSection 定时任务: 在指定会话按固定间隔执行命令 (输出随历史落盘, 可审计回放)
+function TaskSection() {
+    const [tasks, setTasks] = useState<store.Task[]>([]);
+    const [name, setName] = useState('');
+    const [sessionId, setSessionId] = useState(0);
+    const [interval, setInterval] = useState(60);
+    const [command, setCommand] = useState('');
+    const [msg, setMsg] = useState('');
+    const [err, setErr] = useState('');
+
+    async function refresh() {
+        try {
+            setTasks((await ListTasks()) ?? []);
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        }
+    }
+
+    useEffect(() => {
+        refresh();
+    }, []);
+
+    async function doSave() {
+        setErr('');
+        setMsg('');
+        try {
+            if (!name.trim() || !command.trim() || sessionId <= 0) {
+                setErr('任务名、会话 ID、命令均不能为空');
+                return;
+            }
+            await SaveTask(name.trim(), sessionId, interval, command.trim(), true, '');
+            setName('');
+            setCommand('');
+            setMsg('任务已创建，正在后台执行');
+            refresh();
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        }
+    }
+
+    async function toggle(t: store.Task) {
+        try {
+            await SaveTask(t.name, t.sessionId, t.intervalSeconds, t.command, !t.enabled, t.id);
+            refresh();
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        }
+    }
+
+    async function del(id: string) {
+        if (!window.confirm('确认删除该定时任务？')) return;
+        try {
+            await DeleteTask(id);
+            refresh();
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        }
+    }
+
+    return (
+        <div className="sp-section">
+            <h2 className="sp-h2">定时任务</h2>
+            <p className="sp-desc">
+                在指定会话按固定间隔自动执行命令，输出随会话历史落盘（可在审计中回放）。
+                会话断开时任务标记失败，重连后自动恢复执行。
+            </p>
+            <div className="set-group">
+                <div className="set-label">新建任务</div>
+                <input className="set-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="任务名, 如 定时查看磁盘" />
+                <div className="set-size-row">
+                    <input
+                        className="set-input"
+                        type="number"
+                        value={sessionId}
+                        onChange={(e) => setSessionId(Number(e.target.value))}
+                        placeholder="会话 ID (终端标题栏可见)"
+                    />
+                    <input
+                        className="set-input"
+                        type="number"
+                        value={interval}
+                        min={5}
+                        onChange={(e) => setInterval(Number(e.target.value))}
+                        placeholder="间隔(秒)"
+                    />
+                </div>
+                <input className="set-input" value={command} onChange={(e) => setCommand(e.target.value)} placeholder="命令, 如 df -h" />
+                <button className="set-save" onClick={doSave}>创建任务</button>
+            </div>
+            {msg && <div className="tunnel-msg">{msg}</div>}
+            {err && <div className="error-box">{err}</div>}
+            <div className="set-group">
+                <div className="set-label">任务列表</div>
+                {tasks.length === 0 && <div className="hist-empty">暂无定时任务</div>}
+                <div className="sc-list">
+                    {tasks.map((t) => (
+                        <div key={t.id} className="sc-item">
+                            <div className="sc-info">
+                                <div className="sc-label">
+                                    {t.enabled ? '▶' : '⏸'} {t.name} · 会话 #{t.sessionId} · 每 {t.intervalSeconds}s
+                                </div>
+                                <div className="sc-desc">
+                                    <code>{t.command}</code>
+                                    {t.lastError ? ` · ❌ ${t.lastError}` : t.lastRun ? ` · 最近 ${t.lastRun}` : ' · 未执行'}
+                                </div>
+                            </div>
+                            <button className="si-del" onClick={() => toggle(t)} title={t.enabled ? '暂停' : '启用'}>
+                                {t.enabled ? '暂停' : '启用'}
+                            </button>
+                            <button className="si-del" onClick={() => del(t.id)}>
+                                删除
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// AlertSection 监控告警: CPU/内存/磁盘阈值 + 通知渠道 + 历史记录
+function AlertSection() {
+    const [enabled, setEnabled] = useState(false);
+    const [cpu, setCpu] = useState(90);
+    const [mem, setMem] = useState(85);
+    const [disk, setDisk] = useState(85);
+    const [webhook, setWebhook] = useState('');
+    const [alerts, setAlerts] = useState<store.AlertRecord[]>([]);
+    const [msg, setMsg] = useState('');
+    const [err, setErr] = useState('');
+
+    async function refresh() {
+        try {
+            const c = await GetAlertConfig();
+            setEnabled(c.enabled);
+            setCpu(c.cpuThreshold || 90);
+            setMem(c.memThreshold || 85);
+            setDisk(c.diskThreshold || 85);
+            setWebhook(c.webhookUrl || '');
+            setAlerts((await ListAlerts()) ?? []);
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        }
+    }
+
+    useEffect(() => {
+        refresh();
+    }, []);
+
+    async function save() {
+        setErr('');
+        setMsg('');
+        try {
+            await SaveAlertConfig(enabled, cpu, mem, disk, webhook.trim());
+            setMsg('告警配置已保存 (后台每 10s 检查一次)');
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        }
+    }
+
+    async function test() {
+        setErr('');
+        setMsg('');
+        try {
+            await TestAlert('测试通知: 告警渠道正常 ✅');
+            setMsg('已发送测试通知');
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        }
+    }
+
+    return (
+        <div className="sp-section">
+            <h2 className="sp-h2">监控告警</h2>
+            <p className="sp-desc">
+                对活动会话每 10 秒检查 CPU/内存/磁盘，超阈值触发一次通知（持续超限不重复），恢复时发送恢复通知。
+            </p>
+            <div className="set-group">
+                <div className="set-label">启用告警</div>
+                <label className="save-session">
+                    <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+                    启用后台监控告警
+                </label>
+            </div>
+            <div className="set-group">
+                <div className="set-label">CPU 阈值 (0=关闭)</div>
+                <div className="set-size-row">
+                    <input type="range" min={0} max={100} value={cpu} onChange={(e) => setCpu(Number(e.target.value))} />
+                    <span className="set-size-val">{cpu}%</span>
+                </div>
+            </div>
+            <div className="set-group">
+                <div className="set-label">内存阈值 (0=关闭)</div>
+                <div className="set-size-row">
+                    <input type="range" min={0} max={100} value={mem} onChange={(e) => setMem(Number(e.target.value))} />
+                    <span className="set-size-val">{mem}%</span>
+                </div>
+            </div>
+            <div className="set-group">
+                <div className="set-label">磁盘阈值 (0=关闭)</div>
+                <div className="set-size-row">
+                    <input type="range" min={0} max={100} value={disk} onChange={(e) => setDisk(Number(e.target.value))} />
+                    <span className="set-size-val">{disk}%</span>
+                </div>
+            </div>
+            <div className="set-group">
+                <div className="set-label">钉钉/自定义 Webhook (可选)</div>
+                <input className="set-input" value={webhook} onChange={(e) => setWebhook(e.target.value)} placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." />
+            </div>
+            <div className="upd-actions">
+                <button className="set-save" onClick={save}>保存告警配置</button>
+                <button className="set-save" onClick={test}>发送测试通知</button>
+                <button className="set-save" onClick={() => { ClearAlerts(); setAlerts([]); }} disabled={alerts.length === 0}>
+                    清空历史
+                </button>
+            </div>
+            {msg && <div className="tunnel-msg">{msg}</div>}
+            {err && <div className="error-box">{err}</div>}
+            <div className="set-group">
+                <div className="set-label">告警历史</div>
+                {alerts.length === 0 && <div className="hist-empty">暂无告警记录</div>}
+                <div className="sc-list">
+                    {alerts.map((r) => (
+                        <div key={r.id} className="sc-item">
+                            <div className="sc-info">
+                                <div className="sc-label">
+                                    {r.type === 'recovery' ? '✅ 恢复' : '🔴 告警'} · {r.session} ·{' '}
+                                    {{ cpu: 'CPU', mem: '内存', disk: '磁盘' }[r.metric] ?? r.metric} {r.value.toFixed(1)}%
+                                </div>
+                                <div className="sc-desc">{r.time}</div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
 
 // SyncSection 云同步 (Termius 模式): 注册/登录 → 本地加密推送 / 拉取合并 (零知识)
 function SyncSection() {
@@ -437,6 +676,8 @@ const SECTIONS: Array<{ id: SectionId; label: string }> = [
     { id: 'ai', label: 'AI 辅助' },
     { id: 'credentials', label: '凭据' },
     { id: 'sync', label: '云同步' },
+    { id: 'alerts', label: '告警' },
+    { id: 'tasks', label: '定时任务' },
     { id: 'vault', label: 'Vault 备份' },
     { id: 'about', label: '关于' },
 ];
@@ -712,6 +953,14 @@ export default function SettingsPage({ theme, onTheme, fontFamily, onFontFamily,
 
                 {section === 'sync' && (
                     <SyncSection />
+                )}
+
+                {section === 'alerts' && (
+                    <AlertSection />
+                )}
+
+                {section === 'tasks' && (
+                    <TaskSection />
                 )}
 
                 {section === 'vault' && (

@@ -23,8 +23,42 @@ const (
 	aiUsageBucket  = "ai_usage"
 	auditBucket    = "audit"
 	credBucket     = "credentials"
+	alertBucket    = "alerts"
+	taskBucket     = "tasks"
 	keyringService = "ssh-terminal"
 )
+
+// AlertConfig 监控告警配置 (CPU/内存/磁盘阈值 + 通知渠道)
+type AlertConfig struct {
+	Enabled       bool    `json:"enabled"`
+	CpuThreshold  float64 `json:"cpuThreshold"`  // % (0=关闭该项)
+	MemThreshold  float64 `json:"memThreshold"`  // %
+	DiskThreshold float64 `json:"diskThreshold"` // %
+	WebhookURL    string  `json:"webhookUrl"`    // 钉钉/自定义 webhook (可空)
+}
+
+// AlertRecord 告警历史记录
+type AlertRecord struct {
+	ID        string  `json:"id"`
+	Time      string  `json:"time"`
+	Session   string  `json:"session"` // 会话标签
+	Metric    string  `json:"metric"`  // cpu / mem / disk
+	Value     float64 `json:"value"`
+	Threshold float64 `json:"threshold"`
+	Type      string  `json:"type"` // alert / recovery
+}
+
+// Task 定时任务: 在指定会话按固定间隔执行命令
+type Task struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	SessionID       uint64 `json:"sessionId"`
+	IntervalSeconds int    `json:"intervalSeconds"`
+	Command         string `json:"command"`
+	Enabled         bool   `json:"enabled"`
+	LastRun         string `json:"lastRun"`   // 最近执行时间
+	LastError       string `json:"lastError"` // 最近失败原因 (会话断开等)
+}
 
 // Store 会话存储
 type Store struct {
@@ -63,6 +97,14 @@ func Open() (*Store, error) {
 			return err
 		}
 		_, err = tx.CreateBucketIfNotExists([]byte(credBucket))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte(alertBucket))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte(taskBucket))
 		return err
 	}); err != nil {
 		db.Close()
@@ -332,6 +374,139 @@ func (s *Store) DeleteCredential(id string) error {
 	_ = keyring.Delete(keyringService, credentialKey(id))
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		return tx.Bucket([]byte(credBucket)).Delete([]byte(id))
+	})
+}
+
+// ---------- 监控告警 ----------
+
+const alertConfigKey = "config"
+
+// SaveAlertConfig 保存告警配置
+func (s *Store) SaveAlertConfig(c AlertConfig) error {
+	data, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(alertBucket)).Put([]byte(alertConfigKey), data)
+	})
+}
+
+// GetAlertConfig 读取告警配置 (无配置返回零值)
+func (s *Store) GetAlertConfig() (AlertConfig, error) {
+	var c AlertConfig
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		if v := tx.Bucket([]byte(alertBucket)).Get([]byte(alertConfigKey)); v != nil {
+			return json.Unmarshal(v, &c)
+		}
+		return nil
+	})
+	return c, err
+}
+
+// AddAlert 追加一条告警历史 (最多保留 200 条)
+func (s *Store) AddAlert(r AlertRecord) error {
+	if r.ID == "" {
+		r.ID = newID()
+	}
+	data, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(alertBucket))
+		if err := b.Put([]byte(r.ID), data); err != nil {
+			return err
+		}
+		// 超限裁剪: 保留最新 200 条
+		var ids []string
+		_ = b.ForEach(func(k, v []byte) error {
+			ids = append(ids, string(k))
+			return nil
+		})
+		if len(ids) > 200 {
+			sort.Strings(ids)
+			for _, k := range ids[:len(ids)-200] {
+				_ = b.Delete([]byte(k))
+			}
+		}
+		return nil
+	})
+}
+
+// ListAlerts 列出告警历史 (最新在前)
+func (s *Store) ListAlerts() ([]AlertRecord, error) {
+	out := []AlertRecord{}
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(alertBucket)).ForEach(func(k, v []byte) error {
+			if string(k) == alertConfigKey {
+				return nil // 跳过配置条目
+			}
+			var r AlertRecord
+			if err := json.Unmarshal(v, &r); err == nil {
+				out = append(out, r)
+			}
+			return nil
+		})
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Time > out[j].Time })
+	return out, err
+}
+
+// ClearAlerts 清空告警历史 (保留配置)
+func (s *Store) ClearAlerts() error {
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(alertBucket))
+		var keys []string
+		_ = b.ForEach(func(k, v []byte) error {
+			if string(k) != alertConfigKey {
+				keys = append(keys, string(k))
+			}
+			return nil
+		})
+		for _, k := range keys {
+			_ = b.Delete([]byte(k))
+		}
+		return nil
+	})
+}
+
+// ---------- 定时任务 ----------
+
+// SaveTask 保存或更新定时任务, 返回 ID
+func (s *Store) SaveTask(t Task) (string, error) {
+	if t.ID == "" {
+		t.ID = newID()
+	}
+	data, err := json.Marshal(t)
+	if err != nil {
+		return "", err
+	}
+	err = s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(taskBucket)).Put([]byte(t.ID), data)
+	})
+	return t.ID, err
+}
+
+// ListTasks 列出全部定时任务
+func (s *Store) ListTasks() ([]Task, error) {
+	out := []Task{}
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(taskBucket)).ForEach(func(k, v []byte) error {
+			var t Task
+			if err := json.Unmarshal(v, &t); err == nil {
+				out = append(out, t)
+			}
+			return nil
+		})
+	})
+	return out, err
+}
+
+// DeleteTask 删除定时任务
+func (s *Store) DeleteTask(id string) error {
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(taskBucket)).Delete([]byte(id))
 	})
 }
 

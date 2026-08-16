@@ -123,6 +123,10 @@ func (a *App) startup(ctx context.Context) {
 	a.engine.SetProgressHandler(func(t model.TransferTask) {
 		runtime.EventsEmit(ctx, "sftp-progress", t)
 	})
+	// 启动监控告警引擎 (常驻轮询)
+	a.startAlertEngine()
+	// 启动定时任务引擎 (常驻轮询)
+	a.startTaskEngine()
 }
 
 // getSession 按 ID 取会话 (通用终端接口)
