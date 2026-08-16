@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -60,7 +61,7 @@ func Connect(o Options) (*Session, error) {
 	if o.Port <= 0 {
 		o.Port = 5900
 	}
-	addr := fmt.Sprintf("%s:%d", o.Host, o.Port)
+	addr := net.JoinHostPort(o.Host, strconv.Itoa(o.Port))
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("连接 %s 失败: %v", addr, err)

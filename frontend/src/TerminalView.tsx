@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
-import { SshSend, SshResize, ListSnippets, SessionMeta } from '../wailsjs/go/main/App';
+import { SshSend, SshResize, ListSnippets, SessionMeta, AiExplain } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { THEMES, type ThemeName } from './themes';
@@ -55,6 +55,10 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
     const [showFind, setShowFind] = useState(false);
     const [ctx, setCtx] = useState<{ x: number; y: number } | null>(null);
     const [snippets, setSnippets] = useState<model.Snippet[]>([]);
+    // 内联 AI 报错解释 (Warp 式): 检测到疑似报错 → 提示条 → 点击流式解释
+    const [aiHint, setAiHint] = useState(false);
+    const [explaining, setExplaining] = useState(false);
+    const [explainText, setExplainText] = useState('');
     // 输出节流: 高频输出合并到一帧内一次写入, 避免大日志卡顿
     const pendingRef = useRef('');
     const rafRef = useRef<number | null>(null);
@@ -101,6 +105,10 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
 
         const onOutput = (e: SshOutput) => {
             if (e.sessionId !== sessionId) return;
+            // 报错检测: 纯文本中的典型错误关键词 (仅提示, 不自动调用)
+            if (!aiHint && !explaining && /(error|fatal|exception|failed|denied|拒绝|错误|失败|异常|not found|no such file)/i.test(e.data)) {
+                setAiHint(true);
+            }
             pendingRef.current += colorizeLog(e.data);
             scheduleFlush();
         };
@@ -113,6 +121,17 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
         const offOutput = EventsOn('ssh-output', onOutput);
         const offExit = EventsOn('ssh-exit', onExit);
         const offReconnect = EventsOn('ssh-reconnect', onReconnect);
+        // 内联 AI 报错解释流式事件 (独立事件名, 不与 AI 面板冲突)
+        const offExplainDelta = EventsOn('ai-explain-delta', (e: { text: string }) => {
+            setExplainText((prev) => prev + e.text);
+        });
+        const offExplainDone = EventsOn('ai-explain-done', () => {
+            setExplaining(false);
+        });
+        const offExplainErr = EventsOn('ai-explain-error', (e: { text: string }) => {
+            setExplaining(false);
+            setExplainText((prev) => prev + '\n[错误] ' + e.text);
+        });
 
         const dataDispose = term.onData((data) => {
             SshSend(sessionId, data);
@@ -133,6 +152,9 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
             offOutput();
             offExit();
             offReconnect();
+            offExplainDelta();
+            offExplainDone();
+            offExplainErr();
             term.dispose();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -250,6 +272,18 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
         setCtx(null);
     }
 
+    // 请求 AI 解释最近报错 (Warp 式内联)
+    async function askExplain() {
+        setExplaining(true);
+        setExplainText('');
+        try {
+            await AiExplain(sessionId, '解释上面最近的报错，给出原因和修复命令');
+        } catch (e: any) {
+            setExplaining(false);
+            setExplainText(e?.message ?? String(e));
+        }
+    }
+
     return (
         <div className="terminal-layout">
             <div className="terminal-toolbar">
@@ -261,6 +295,27 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
                     🔍 查询
                 </button>
             </div>
+            {aiHint && (
+                <div className="ai-hint-bar">
+                    <span className="ahb-icon">⚠️</span>
+                    <span className="ahb-text">检测到疑似报错</span>
+                    <button className="ahb-btn" onClick={askExplain} disabled={explaining}>
+                        {explaining ? 'AI 解释中...' : '✨ 询问 AI 解释'}
+                    </button>
+                    <button className="ahb-close" onClick={() => setAiHint(false)} title="关闭提示">
+                        ×
+                    </button>
+                </div>
+            )}
+            {explainText && (
+                <div className="ai-explain-panel">
+                    <div className="aep-head">
+                        <span>AI 报错解释</span>
+                        <button onClick={() => setExplainText('')}>关闭</button>
+                    </div>
+                    <pre className="aep-content">{explainText || '思考中...'}</pre>
+                </div>
+            )}
             {showFind && (
                 <div className="find-bar">
                     <input

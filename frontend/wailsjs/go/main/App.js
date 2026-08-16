@@ -18,6 +18,10 @@ export function AiConfigure(arg1, arg2, arg3) {
   return window['go']['main']['App']['AiConfigure'](arg1, arg2, arg3);
 }
 
+export function AiExplain(arg1, arg2) {
+  return window['go']['main']['App']['AiExplain'](arg1, arg2);
+}
+
 export function AiSetKey(arg1) {
   return window['go']['main']['App']['AiSetKey'](arg1);
 }
@@ -206,8 +210,8 @@ export function SaveCredential(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SaveCredential'](arg1, arg2, arg3, arg4);
 }
 
-export function SaveSession(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12) {
-  return window['go']['main']['App']['SaveSession'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12);
+export function SaveSession(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13) {
+  return window['go']['main']['App']['SaveSession'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13);
 }
 
 export function SaveSnippet(arg1, arg2, arg3) {

@@ -53,6 +53,7 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
     const [saveSession, setSaveSession] = useState(false);
     const [sessionName, setSessionName] = useState('');
     const [sessionGroup, setSessionGroup] = useState(''); // 保存会话时的分组
+    const [sessionTags, setSessionTags] = useState(''); // 保存会话时的标签 (逗号分隔)
 
     async function refreshSessions() {
         try {
@@ -86,6 +87,7 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
             // 回填该会话所在分组 (从会话列表取, 便于继续修改)
             const s = sessions.find((x) => x.id === selectedSession);
             setSessionGroup(s?.group ?? '');
+            setSessionTags(s?.tags?.join(', ') ?? '');
             setError('');
         } catch (e: any) {
             setError(e?.message ?? String(e));
@@ -148,7 +150,7 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
             onConnected(id, label);
             if (saveSession) {
                 const name = sessionName.trim() || `${username}@${host}`;
-                SaveSession(name, host, port, username, password, encoding, hostKeyMode, useProxy ? proxyType : '', useProxy ? proxyHost : '', proxyPort, useProxy ? proxyUser : '', useProxy ? proxyPassword : '')
+                SaveSession(name, host, port, username, password, encoding, hostKeyMode, useProxy ? proxyType : '', useProxy ? proxyHost : '', proxyPort, useProxy ? proxyUser : '', useProxy ? proxyPassword : '', sessionTags)
                     .then(async (sid) => {
                         if (sessionGroup) await MoveSession(sid, sessionGroup); // 新会话落入分组
                         refreshSessions();
@@ -481,7 +483,7 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                                     <input
                                         value={sessionGroup}
                                         onChange={(e) => setSessionGroup(e.target.value)}
-                                        placeholder="留空=未分组, 支持新建分组"
+                                        placeholder="留空=未分组, 支持 '父组/子组' 嵌套"
                                         list="group-options"
                                     />
                                     <datalist id="group-options">
@@ -489,6 +491,14 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                                             <option key={g} value={g} />
                                         ))}
                                     </datalist>
+                                </label>
+                                <label>
+                                    标签 (可选, 逗号分隔)
+                                    <input
+                                        value={sessionTags}
+                                        onChange={(e) => setSessionTags(e.target.value)}
+                                        placeholder="如: prod, db, 生产"
+                                    />
                                 </label>
                             </>
                         )}

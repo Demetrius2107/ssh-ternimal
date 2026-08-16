@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { SearchHistory, ReadHistory } from '../wailsjs/go/main/App';
+import { SearchHistory, ReadHistory, PickFile, EditorSaveLocal } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 
-// LogPanel 日志面板: 跨会话关键字检索 → 命中文件 → 查看 (关键字高亮/行过滤) + 回放
+// LogPanel 日志面板: 跨会话关键字检索 → 命中文件 → 查看 (关键字高亮/行过滤) + 回放 + 书签/导出
 export default function LogPanel() {
     const [kw, setKw] = useState('');
     const [matches, setMatches] = useState<model.HistoryMatch[]>([]);
@@ -16,6 +16,60 @@ export default function LogPanel() {
     const [pos, setPos] = useState(0);
     const linesRef = useRef<string[]>([]);
     const timerRef = useRef<number | null>(null);
+
+    // 书签: {path, line, text}[] 持久化到 localStorage
+    const [bookmarks, setBookmarks] = useState<{ path: string; line: number; text: string }[]>(() => {
+        try {
+            return JSON.parse(localStorage.getItem('logBookmarks') || '[]');
+        } catch {
+            return [];
+        }
+    });
+
+    function persistBookmarks(b: typeof bookmarks) {
+        setBookmarks(b);
+        localStorage.setItem('logBookmarks', JSON.stringify(b));
+    }
+
+    // 添加书签 (当前查看日志的当前行)
+    function addBookmark() {
+        if (!active) return;
+        const line = playing ? pos : linesRef.current.length;
+        const text = linesRef.current[Math.min(line, linesRef.current.length - 1)]?.trim().slice(0, 60) || '';
+        persistBookmarks([...bookmarks, { path: active.path, line, text }]);
+        setErr('');
+    }
+
+    // 跳转到书签对应日志
+    async function gotoBookmark(b: { path: string; line: number }) {
+        const hit = matches.find((m) => m.path === b.path);
+        if (hit) {
+            await open(hit);
+            stopReplay();
+            setPos(b.line);
+            setPlaying(false);
+        } else {
+            setErr('书签对应的日志文件不在本次检索结果中，请先检索到它');
+        }
+    }
+
+    // 删除书签
+    function removeBookmark(i: number) {
+        persistBookmarks(bookmarks.filter((_, idx) => idx !== i));
+    }
+
+    // 导出当前日志到本地
+    async function exportLog() {
+        if (!active || !content) return;
+        try {
+            const p = await PickFile();
+            if (!p) return;
+            await EditorSaveLocal(p, content);
+            setErr('');
+        } catch (e: any) {
+            setErr(e?.message ?? String(e));
+        }
+    }
 
     async function doSearch() {
         if (!kw.trim()) return;
@@ -125,6 +179,8 @@ export default function LogPanel() {
                             {playing ? ` · 回放 ${pos}/${lines.length}` : ''}
                         </span>
                         <button onClick={toggleReplay}>{playing ? '⏸ 暂停' : '▶ 回放'}</button>
+                        <button onClick={addBookmark} title="将当前查看位置保存为书签">🔖 书签</button>
+                        <button onClick={exportLog} title="导出当前日志到本地">💾 导出</button>
                         {playing && (
                             <button
                                 onClick={() => {
@@ -136,6 +192,20 @@ export default function LogPanel() {
                             </button>
                         )}
                     </div>
+                    {bookmarks.length > 0 && (
+                        <div className="log-bookmarks">
+                            {bookmarks.map((b, i) => (
+                                <div key={i} className="lb-item">
+                                    <span className="lb-info" onClick={() => gotoBookmark(b)} title="点击跳转">
+                                        📍 L{b.line} · {b.text || b.path.split('/').pop()}
+                                    </span>
+                                    <button className="lb-del" onClick={() => removeBookmark(i)} title="删除书签">
+                                        ×
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                     <pre className="log-content">
                         {visible.map((x) => (
                             <div key={x.i} className="log-line">

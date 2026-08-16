@@ -11,6 +11,8 @@ export function AiChat(arg1:number,arg2:string):Promise<void>;
 
 export function AiConfigure(arg1:string,arg2:string,arg3:number):Promise<void>;
 
+export function AiExplain(arg1:number,arg2:string):Promise<void>;
+
 export function AiSetKey(arg1:string):Promise<void>;
 
 export function AiStatus():Promise<model.AiStatus>;
@@ -105,7 +107,7 @@ export function SaveAlertConfig(arg1:boolean,arg2:number,arg3:number,arg4:number
 
 export function SaveCredential(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
-export function SaveSession(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:number,arg11:string,arg12:string):Promise<string>;
+export function SaveSession(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:number,arg11:string,arg12:string,arg13:string):Promise<string>;
 
 export function SaveSnippet(arg1:string,arg2:string,arg3:string):Promise<string>;
 

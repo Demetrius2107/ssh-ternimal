@@ -1514,14 +1514,22 @@ func (a *App) VncClose(id uint64) {
 // ---------- 会话管理 ----------
 
 // SaveSession 保存会话配置, 密码存系统凭据库, 返回会话 ID
-func (a *App) SaveSession(name, host string, port int, username, password, encoding, hostKeyMode, proxyType, proxyHost string, proxyPort int, proxyUser, proxyPassword string) (string, error) {
+func (a *App) SaveSession(name, host string, port int, username, password, encoding, hostKeyMode, proxyType, proxyHost string, proxyPort int, proxyUser, proxyPassword, tags string) (string, error) {
 	if a.store == nil {
 		return "", errors.New("会话存储未初始化")
+	}
+	// 标签: 逗号分隔字符串 → 切片 (去空)
+	var tagList []string
+	for _, t := range strings.Split(tags, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			tagList = append(tagList, t)
+		}
 	}
 	id, err := a.store.Save(model.StoredSession{
 		Name: name, Host: host, Port: port, Username: username,
 		Encoding: encoding, HostKeyMode: hostKeyMode,
 		ProxyType: proxyType, ProxyHost: proxyHost, ProxyPort: proxyPort, ProxyUser: proxyUser,
+		Tags: tagList,
 	}, password)
 	if err != nil {
 		return "", err
@@ -1761,6 +1769,87 @@ func (a *App) AiCancel() {
 		a.aiCancel()
 		a.aiCancel = nil
 	}
+}
+
+// AiExplain 报错解释: 与 AiChat 相同链路, 但使用独立事件名 (ai-explain-*),
+// 供终端内联提示条使用, 避免与 AI 面板 (ai-*) 的流式事件冲突
+func (a *App) AiExplain(sessionID uint64, prompt string) error {
+	if strings.TrimSpace(prompt) == "" {
+		return errors.New("请输入问题")
+	}
+	a.aiMu.Lock()
+	provider, mdl := a.aiProvider, a.aiModel
+	limit := a.aiMonthlyLimit
+	a.aiMu.Unlock()
+	if provider == "" {
+		provider = ai.ProviderDeepSeek
+	}
+	if mdl == "" {
+		mdl = ai.ModelDeepSeekChat
+	}
+	if limit <= 0 {
+		limit = ai.DefaultMonthlyTokenLimit
+	}
+
+	// 月度限额检查 (预估本次消耗)
+	month := time.Now().Format("2006-01")
+	used, err := a.store.GetAIUsage(month)
+	if err != nil {
+		return fmt.Errorf("读取用量失败: %v", err)
+	}
+	est := ai.EstimateTokens(prompt) + 2000
+	if used+est > limit {
+		return fmt.Errorf("本月 AI 用量已达限额 (%d/%d token)，请调整限额或下月再试", used, limit)
+	}
+
+	var apiKey string
+	if provider == ai.ProviderDeepSeek {
+		apiKey, _ = keyring.Get(aiKeyringService, aiKeyringKey)
+		if apiKey == "" {
+			return errors.New("未配置 DeepSeek API Key，请在设置中填写")
+		}
+	}
+
+	contextText := a.sessionContext(sessionID)
+	san := ai.NewSanitizer(nil)
+	system := san.Sanitize("你是嵌入 SSH 终端的运维助手。用户遇到了报错，请：1) 解释错误原因 2) 给出修复命令 3) 指出风险。简洁直接。")
+	user := san.Sanitize(fmt.Sprintf("以下是当前终端最近的输出（可能包含报错）：\n---\n%s\n---\n\n%s", contextText, prompt))
+	messages := []ai.Message{
+		{Role: "system", Content: system},
+		{Role: "user", Content: user},
+	}
+
+	p, err := ai.NewProvider(provider, apiKey)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	a.aiMu.Lock()
+	if a.aiCancel != nil {
+		a.aiCancel()
+	}
+	a.aiCancel = cancel
+	a.aiMu.Unlock()
+
+	go func() {
+		defer cancel()
+		var reply strings.Builder
+		err := p.Chat(ctx, mdl, messages, func(delta string) {
+			reply.WriteString(delta)
+			runtime.EventsEmit(a.ctx, "ai-explain-delta", model.AiDelta{Text: delta})
+		})
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				runtime.EventsEmit(a.ctx, "ai-explain-error", model.AiDelta{Text: "已中断"})
+			} else {
+				runtime.EventsEmit(a.ctx, "ai-explain-error", model.AiDelta{Text: err.Error()})
+			}
+			return
+		}
+		_ = a.store.AddAIUsage(month, ai.EstimateTokens(prompt)+ai.EstimateTokens(reply.String()))
+		runtime.EventsEmit(a.ctx, "ai-explain-done", nil)
+	}()
+	return nil
 }
 
 // sessionContext 读取会话历史文件尾部内容作为 AI 上下文 (最近输出, 限 4KB)

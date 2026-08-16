@@ -296,6 +296,7 @@ export namespace model {
 	    proxyPort: number;
 	    proxyUser: string;
 	    credentialId: string;
+	    tags: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new StoredSession(source);
@@ -316,6 +317,7 @@ export namespace model {
 	        this.proxyPort = source["proxyPort"];
 	        this.proxyUser = source["proxyUser"];
 	        this.credentialId = source["credentialId"];
+	        this.tags = source["tags"];
 	    }
 	}
 	export class SysMetrics {

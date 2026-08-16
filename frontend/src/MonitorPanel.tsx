@@ -212,6 +212,25 @@ export default function MonitorPanel({ sessionId, compact }: { sessionId: number
                     {tab === 'disk' && (
                         <div className="mon-table-wrap">
                             {disks.length === 0 && <div className="hist-empty">暂无磁盘数据</div>}
+                            {/* 使用率总览: 按使用率降序横向条形 (图表化) */}
+                            {disks.length > 0 && (
+                                <div className="disk-overview">
+                                    {[...disks]
+                                        .sort((a, b) => b.usePct - a.usePct)
+                                        .map((d, i) => (
+                                            <div key={i} className="do-row" title={`${d.filesystem} ${d.used}/${d.size} · 挂载 ${d.mounted}`}>
+                                                <span className="do-label">{d.mounted || d.filesystem}</span>
+                                                <div className="do-bar">
+                                                    <div
+                                                        className={`do-fill ${d.usePct >= 90 ? 'crit' : d.usePct >= 75 ? 'warn' : ''}`}
+                                                        style={{ width: `${Math.min(100, d.usePct)}%` }}
+                                                    />
+                                                </div>
+                                                <span className="do-val">{d.usePct.toFixed(0)}%</span>
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
                             <table className="mon-table">
                                 <thead>
                                     <tr><th>文件系统</th><th>容量</th><th>已用</th><th>可用</th><th>使用率</th><th>挂载点</th></tr>
