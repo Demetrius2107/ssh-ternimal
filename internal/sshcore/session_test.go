@@ -29,7 +29,7 @@ func testPublicKey(t *testing.T) ssh.PublicKey {
 
 // ---------- knownhosts ----------
 
-func TestSplitHostPort(t *testing.T) {
+func Test主机端口解析应支持IPv4IPv6与默认端口回退(t *testing.T) {
 	cases := []struct {
 		in       string
 		wantHost string
@@ -49,7 +49,7 @@ func TestSplitHostPort(t *testing.T) {
 	}
 }
 
-func TestAppendKnownHostKey(t *testing.T) {
+func Test接受主机密钥后应写入known_hosts(t *testing.T) {
 	t.Setenv("APPDATA", t.TempDir())
 	// 生成一个真实 ssh 公钥做写入测试
 	key := testPublicKey(t)
@@ -74,7 +74,7 @@ func TestAppendKnownHostKey(t *testing.T) {
 	}
 }
 
-func TestAppendKnownHostKeyMultipleHosts(t *testing.T) {
+func Test多个主机密钥应各自追加互不覆盖(t *testing.T) {
 	t.Setenv("APPDATA", t.TempDir())
 	key := testPublicKey(t)
 	_ = AcceptHostKey("a.example.com", 22, key)
@@ -89,7 +89,7 @@ func TestAppendKnownHostKeyMultipleHosts(t *testing.T) {
 }
 
 // TestKnownHostsPath 路径位于 APPDATA/ssh-terminal/known_hosts
-func TestKnownHostsPath(t *testing.T) {
+func TestKnown_hosts路径应位于配置目录下(t *testing.T) {
 	t.Setenv("APPDATA", t.TempDir())
 	p, err := KnownHostsPath()
 	if err != nil {
@@ -102,7 +102,7 @@ func TestKnownHostsPath(t *testing.T) {
 
 // ---------- session.go ----------
 
-func TestSortEntries(t *testing.T) {
+func Test文件列表排序应目录优先且名称不区分大小写(t *testing.T) {
 	entries := []model.FileEntry{
 		{Name: "fileB.txt", IsDir: false},
 		{Name: "dirA", IsDir: true},

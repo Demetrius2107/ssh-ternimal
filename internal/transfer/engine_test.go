@@ -7,7 +7,7 @@ import (
 )
 
 // TestResolveConflictOverwrite 覆盖策略: 返回原目标, 不跳过
-func TestResolveConflictOverwrite(t *testing.T) {
+func Test冲突策略为覆盖时应直接使用目标路径(t *testing.T) {
 	target, skip, err := resolveConflict("/tmp/x", "overwrite", func(string) (bool, error) { return true, nil })
 	if err != nil || skip || target != "/tmp/x" {
 		t.Fatalf("overwrite 应直接返回目标: target=%q skip=%v err=%v", target, skip, err)
@@ -15,7 +15,7 @@ func TestResolveConflictOverwrite(t *testing.T) {
 }
 
 // TestResolveConflictSkip 跳过策略: 标记跳过
-func TestResolveConflictSkip(t *testing.T) {
+func Test冲突策略为跳过时应标记跳过(t *testing.T) {
 	_, skip, err := resolveConflict("/tmp/x", "skip", func(string) (bool, error) { return true, nil })
 	if err != nil || !skip {
 		t.Fatalf("skip 应返回 skip=true, got %v %v", skip, err)
@@ -23,7 +23,7 @@ func TestResolveConflictSkip(t *testing.T) {
 }
 
 // TestResolveConflictRename 改名策略: 生成 "base (n).ext" 直到不冲突
-func TestResolveConflictRename(t *testing.T) {
+func Test冲突策略为改名时应生成不冲突的新名称(t *testing.T) {
 	exists := map[string]bool{"/tmp/a.txt": true, "/tmp/a (1).txt": true}
 	target, skip, err := resolveConflict("/tmp/a.txt", "rename", func(p string) (bool, error) { return exists[p], nil })
 	if err != nil || skip {
@@ -35,7 +35,7 @@ func TestResolveConflictRename(t *testing.T) {
 }
 
 // TestResolveConflictRenameNoExt 无扩展名文件改名
-func TestResolveConflictRenameNoExt(t *testing.T) {
+func Test无扩展名文件改名时也应追加序号(t *testing.T) {
 	exists := map[string]bool{"/tmp/backup": true}
 	target, _, err := resolveConflict("/tmp/backup", "rename", func(p string) (bool, error) { return exists[p], nil })
 	if err != nil {
@@ -47,7 +47,7 @@ func TestResolveConflictRenameNoExt(t *testing.T) {
 }
 
 // TestResolveConflictExistsError 探测出错应传播
-func TestResolveConflictExistsError(t *testing.T) {
+func Test冲突探测出错时应返回错误(t *testing.T) {
 	_, _, err := resolveConflict("/tmp/x", "rename", func(string) (bool, error) { return false, os.ErrPermission })
 	if err == nil {
 		t.Fatal("探测出错应返回错误")
@@ -55,7 +55,7 @@ func TestResolveConflictExistsError(t *testing.T) {
 }
 
 // TestCollectLocalFiles 递归收集文件与总大小
-func TestCollectLocalFiles(t *testing.T) {
+func Test递归收集文件应包含子目录并统计总大小(t *testing.T) {
 	root := t.TempDir()
 	_ = os.WriteFile(filepath.Join(root, "a.txt"), make([]byte, 10), 0644)
 	sub := filepath.Join(root, "sub")
@@ -83,7 +83,7 @@ func TestCollectLocalFiles(t *testing.T) {
 }
 
 // TestCollectLocalFilesEmpty 空目录返回空
-func TestCollectLocalFilesEmpty(t *testing.T) {
+func Test空目录收集文件应无文件(t *testing.T) {
 	files, total, err := collectLocalFiles(t.TempDir())
 	if err != nil {
 		t.Fatalf("collectLocalFiles 失败: %v", err)
@@ -94,7 +94,7 @@ func TestCollectLocalFilesEmpty(t *testing.T) {
 }
 
 // TestResolveLocalTargetNotExists 目标不存在直接可用
-func TestResolveLocalTargetNotExists(t *testing.T) {
+func Test本地目标不存在时应直接可用(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "new.txt")
 	target, skip, err := resolveLocalTarget(p, "overwrite")
 	if err != nil || skip || target != p {

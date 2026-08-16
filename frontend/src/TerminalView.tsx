@@ -55,6 +55,22 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
     const [showFind, setShowFind] = useState(false);
     const [ctx, setCtx] = useState<{ x: number; y: number } | null>(null);
     const [snippets, setSnippets] = useState<model.Snippet[]>([]);
+    // 输出节流: 高频输出合并到一帧内一次写入, 避免大日志卡顿
+    const pendingRef = useRef('');
+    const rafRef = useRef<number | null>(null);
+
+    // 合并并写入待处理输出 (rAF 单帧内只 flush 一次)
+    function scheduleFlush() {
+        if (rafRef.current !== null) return; // 已有排队
+        rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = null;
+            const term = termRef.current;
+            if (term && pendingRef.current) {
+                term.write(pendingRef.current);
+                pendingRef.current = '';
+            }
+        });
+    }
 
     // 右键打开时加载命令片段 (供快速发送)
     useEffect(() => {
@@ -84,7 +100,9 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
         searchAddonRef.current = search;
 
         const onOutput = (e: SshOutput) => {
-            if (e.sessionId === sessionId) term.write(colorizeLog(e.data));
+            if (e.sessionId !== sessionId) return;
+            pendingRef.current += colorizeLog(e.data);
+            scheduleFlush();
         };
         const onExit = (e: SshExit) => {
             if (e.sessionId === sessionId) setExitMsg(e.error ? `会话已退出: ${e.error}` : '会话已结束');

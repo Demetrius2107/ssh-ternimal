@@ -19,7 +19,7 @@ func newTestStore(t *testing.T) *Store {
 	return s
 }
 
-func TestSessionCRUD(t *testing.T) {
+func Test保存会话后加载应返回原配置(t *testing.T) {
 	s := newTestStore(t)
 
 	// 保存
@@ -67,7 +67,7 @@ func TestSessionCRUD(t *testing.T) {
 	}
 }
 
-func TestListEmptyReturnsEmptySlice(t *testing.T) {
+func Test空库列出会话应返回空切片而非null(t *testing.T) {
 	s := newTestStore(t)
 	list, err := s.List()
 	if err != nil {
@@ -81,7 +81,7 @@ func TestListEmptyReturnsEmptySlice(t *testing.T) {
 	}
 }
 
-func TestSnippetCRUD(t *testing.T) {
+func Test保存片段后可更新与删除(t *testing.T) {
 	s := newTestStore(t)
 
 	id, err := s.SaveSnippet(model.Snippet{Name: "查看磁盘", Command: "df -h"})
@@ -114,7 +114,7 @@ func TestSnippetCRUD(t *testing.T) {
 	}
 }
 
-func TestAIUsageAccumulate(t *testing.T) {
+func Test月度用量应逐月独立累计(t *testing.T) {
 	s := newTestStore(t)
 	month := "2026-08"
 
@@ -144,7 +144,7 @@ func TestAIUsageAccumulate(t *testing.T) {
 	}
 }
 
-func TestOpenCreatesBuckets(t *testing.T) {
+func Test打开库时三个存储桶应可用(t *testing.T) {
 	t.Setenv("APPDATA", t.TempDir())
 	s, err := Open()
 	if err != nil {
@@ -164,7 +164,7 @@ func TestOpenCreatesBuckets(t *testing.T) {
 }
 
 // 确保环境变量不会污染真实用户库
-func TestEnvIsolation(t *testing.T) {
+func Test测试不应污染真实用户配置目录(t *testing.T) {
 	before := os.Getenv("APPDATA")
 	t.Cleanup(func() { os.Setenv("APPDATA", before) })
 }

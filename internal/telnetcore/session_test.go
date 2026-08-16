@@ -26,7 +26,7 @@ func newTestSession() *Session {
 }
 
 // TestProcessPlainText 普通文本原样透传
-func TestProcessPlainText(t *testing.T) {
+func Test普通文本应原样透传(t *testing.T) {
 	s := newTestSession()
 	data, rest := s.process([]byte("hello world\r\n"))
 	if rest != nil {
@@ -38,7 +38,7 @@ func TestProcessPlainText(t *testing.T) {
 }
 
 // TestProcessIACLiteral 双 0xFF (IAC IAC) 折叠为单字节 0xFF
-func TestProcessIACLiteral(t *testing.T) {
+func Test双FF应折叠为单个字面字节(t *testing.T) {
 	s := newTestSession()
 	data, _ := s.process([]byte{iac, iac, 'a', 'b'})
 	want := []byte{0xFF, 'a', 'b'}
@@ -48,7 +48,7 @@ func TestProcessIACLiteral(t *testing.T) {
 }
 
 // TestProcessNegotiation 选项协商被消费且不进入输出
-func TestProcessNegotiation(t *testing.T) {
+func Test选项协商应被消费不进入输出(t *testing.T) {
 	s := newTestSession()
 	// WILL ECHO (0xFF 0xFB 0x01) 后跟文本
 	data, rest := s.process([]byte{iac, will, optEcho, 'x'})
@@ -61,7 +61,7 @@ func TestProcessNegotiation(t *testing.T) {
 }
 
 // TestProcessUnsupportedOptions 不支持的选项被拒绝 (WONT 响应)
-func TestProcessUnsupportedOptions(t *testing.T) {
+func Test不支持的选项应被拒绝(t *testing.T) {
 	s := newTestSession()
 	data, _ := s.process([]byte{iac, will, 200, 'y'})
 	if string(data) != "y" {
@@ -70,7 +70,7 @@ func TestProcessUnsupportedOptions(t *testing.T) {
 }
 
 // TestProcessSBSubnegotiation 子协商 (SB ... SE) 整体消费
-func TestProcessSBSubnegotiation(t *testing.T) {
+func Test子协商SBSE应整体消费(t *testing.T) {
 	s := newTestSession()
 	// SB NAWS (0xFF 0xFA 0x1F 0x00 0x28 0x00 0x78 0xFF 0xF0) 后跟 'z'
 	data, rest := s.process([]byte{iac, sb, optNAWS, 0x00, 0x28, 0x00, 0x78, iac, se, 'z'})
@@ -83,7 +83,7 @@ func TestProcessSBSubnegotiation(t *testing.T) {
 }
 
 // TestProcessIncompleteTail IAC 序列跨包: 尾部不完整应原样返回等下一包
-func TestProcessIncompleteTail(t *testing.T) {
+func TestIAC序列跨包时未消费尾部应保留(t *testing.T) {
 	s := newTestSession()
 	// 只剩 IAC + WILL, 缺选项字节
 	data, rest := s.process([]byte{'a', iac, will})
@@ -96,7 +96,7 @@ func TestProcessIncompleteTail(t *testing.T) {
 }
 
 // TestProcessNopCommands NOP/GA 等单字节命令被丢弃
-func TestProcessNopCommands(t *testing.T) {
+func TestNOP等单字节命令应被丢弃(t *testing.T) {
 	s := newTestSession()
 	data, _ := s.process([]byte{iac, 241 /* NOP */, 'q'})
 	if string(data) != "q" {
@@ -105,13 +105,13 @@ func TestProcessNopCommands(t *testing.T) {
 }
 
 // TestNegotiateEcho 服务器 WILL ECHO → 回复 DO ECHO (fakeConn 丢弃写入, 不 panic)
-func TestNegotiateEcho(t *testing.T) {
+func Test收到WILLECHO应回复DO(t *testing.T) {
 	s := newTestSession()
 	s.negotiate(will, optEcho)
 }
 
 // TestSendAndClose 关闭后 Send 报错
-func TestSendAndClose(t *testing.T) {
+func Test关闭后发送应报错(t *testing.T) {
 	s := &Session{closed: true}
 	if err := s.Send("x"); err == nil {
 		t.Fatal("关闭后 Send 应报错")

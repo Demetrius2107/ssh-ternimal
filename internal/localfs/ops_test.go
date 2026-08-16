@@ -17,7 +17,7 @@ func setupDir(t *testing.T) string {
 	return dir
 }
 
-func TestListDirSortedDirsFirst(t *testing.T) {
+func Test列出本地目录应目录在前按名称排序(t *testing.T) {
 	dir := setupDir(t)
 	entries, err := ListDir(dir)
 	if err != nil {
@@ -42,7 +42,7 @@ func TestListDirSortedDirsFirst(t *testing.T) {
 	}
 }
 
-func TestListDirEmptyDir(t *testing.T) {
+func Test空目录应返回空列表(t *testing.T) {
 	entries, err := ListDir(t.TempDir())
 	if err != nil {
 		t.Fatalf("ListDir 失败: %v", err)
@@ -52,13 +52,13 @@ func TestListDirEmptyDir(t *testing.T) {
 	}
 }
 
-func TestListDirNonexistent(t *testing.T) {
+func Test列出不存在的目录应报错(t *testing.T) {
 	if _, err := ListDir(filepath.Join(t.TempDir(), "nope")); err == nil {
 		t.Fatal("不存在的目录应报错")
 	}
 }
 
-func TestParent(t *testing.T) {
+func Test上级目录解析应支持多级与根目录(t *testing.T) {
 	// 本应用为 Windows 平台, 前端传入的均为 Windows 路径
 	cases := []struct{ in, want string }{
 		{"C:\\a\\b", "C:\\a"},
@@ -72,7 +72,7 @@ func TestParent(t *testing.T) {
 	}
 }
 
-func TestMkdirDeleteRename(t *testing.T) {
+func Test新建删除重命名应正确操作文件(t *testing.T) {
 	dir := t.TempDir()
 	// Mkdir
 	newDir := filepath.Join(dir, "新建")
@@ -102,7 +102,7 @@ func TestMkdirDeleteRename(t *testing.T) {
 }
 
 // 确保 Windows 与 POSIX 分隔符兼容
-func TestPathsUseFilepathSeparator(t *testing.T) {
+func Test返回路径应使用系统分隔符(t *testing.T) {
 	dir := setupDir(t)
 	entries, _ := ListDir(dir)
 	for _, e := range entries {
