@@ -46,6 +46,11 @@ function colorizeLog(data: string): string {
     return out;
 }
 
+// 高置信度报错检测正则: 匹配行首的标准错误格式, 避免误报
+// (如 grep error 的输出、readme 含 "error" 字样不会触发)
+// 要求: Error:/FATAL/Traceback 等在行首, 或 Permission denied/command not found 等完整短语
+const AI_ERROR_RE = /(^|\n)\s*(Error:|ERROR:|FATAL|Traceback|Exception|Permission denied|command not found|No such file or directory|Connection refused|Access denied|操作不允许|无法访问|连接超时|认证失败)/i;
+
 // TerminalView 终端组件: 输出渲染/输入转发/尺寸同步/查找/右键菜单/主题实时切换
 export default function TerminalView({ sessionId, active, theme, fontFamily, fontSize }: { sessionId: number; active: boolean; theme: ThemeName; fontFamily: string; fontSize: number }) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -140,9 +145,15 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
 
         const onOutput = (e: SshOutput) => {
             if (e.sessionId !== sessionId) return;
-            // 报错检测: 纯文本中的典型错误关键词 (仅提示, 不自动调用)
-            if (!aiHint && !explaining && /(error|fatal|exception|failed|denied|拒绝|错误|失败|异常|not found|no such file)/i.test(e.data)) {
-                setAiHint(true);
+            // 报错检测: 仅匹配高置信度的错误模式 (行首 Error:/FATAL/Permission denied 等),
+            // 避免误报 (如 grep error 输出、readme 含 "error" 字样)
+            // 新输出到来时复位提示条 (让黄条随新正常输出消失)
+            if (!explaining) {
+                if (AI_ERROR_RE.test(e.data)) {
+                    setAiHint(true);
+                } else if (aiHint && !AI_ERROR_RE.test(e.data) && e.data.includes('\n')) {
+                    setAiHint(false); // 新的非错误行到来, 自动复位
+                }
             }
             pendingRef.current += colorizeLog(e.data);
             scheduleFlush();

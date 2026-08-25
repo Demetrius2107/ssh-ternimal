@@ -135,47 +135,53 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
         }
     }
 
+    // doConnect: 核心连接逻辑 (构造 cfg → Connect → 保存), 不含主机密钥确认处理
+    // 被 connect 和 AcceptHostKey 后的重试调用, 避免递归 connect 导致的错误重复处理
+    async function doConnect(): Promise<void> {
+        const cfg = new model.SshConfig({
+            protocol,
+            host,
+            port,
+            username,
+            password,
+            privateKey: '',
+            privateKeyPath: authMethod === 'key' ? keyPath : '',
+            passphrase,
+            otp,
+            encoding,
+            hostKeyMode,
+            jumpHost: useJump ? jumpHost : '',
+            jumpPort,
+            jumpUser: useJump ? jumpUser : '',
+            jumpPassword: useJump ? jumpPassword : '',
+            jumpPrivateKeyPath: '',
+            jumpPassphrase: '',
+            proxyType: useProxy ? proxyType : '',
+            proxyHost: useProxy ? proxyHost : '',
+            proxyPort,
+            proxyUser: useProxy ? proxyUser : '',
+            proxyPassword: useProxy ? proxyPassword : '',
+        });
+        const id = await Connect(cfg);
+        const label = protocol === 'telnet' ? `${host}:${port}` : `${username}@${host}:${port}`;
+        onConnected(id, label);
+        if (saveSession) {
+            const name = sessionName.trim() || `${username}@${host}`;
+            // 复用已构造的 cfg (含跳板机/私钥路径/口令/OTP/代理), 连同分组与标签一起保存
+            SaveSession(cfg, name, sessionGroup, sessionTags)
+                .then(async (sid) => {
+                    if (sessionGroup) await MoveSession(sid, sessionGroup); // 新会话落入分组
+                    refreshSessions();
+                })
+                .catch((e: any) => console.warn('保存会话失败', e));
+        }
+    }
+
     async function connect() {
         setConnecting(true);
         setError('');
         try {
-            const cfg = new model.SshConfig({
-                protocol,
-                host,
-                port,
-                username,
-                password,
-                privateKey: '',
-                privateKeyPath: authMethod === 'key' ? keyPath : '',
-                passphrase,
-                otp,
-                encoding,
-                hostKeyMode,
-                jumpHost: useJump ? jumpHost : '',
-                jumpPort,
-                jumpUser: useJump ? jumpUser : '',
-                jumpPassword: useJump ? jumpPassword : '',
-                jumpPrivateKeyPath: '',
-                jumpPassphrase: '',
-                proxyType: useProxy ? proxyType : '',
-                proxyHost: useProxy ? proxyHost : '',
-                proxyPort,
-                proxyUser: useProxy ? proxyUser : '',
-                proxyPassword: useProxy ? proxyPassword : '',
-            });
-            const id = await Connect(cfg);
-            const label = protocol === 'telnet' ? `${host}:${port}` : `${username}@${host}:${port}`;
-            onConnected(id, label);
-            if (saveSession) {
-                const name = sessionName.trim() || `${username}@${host}`;
-                // 复用已构造的 cfg (含跳板机/私钥路径/口令/OTP/代理), 连同分组与标签一起保存
-                SaveSession(cfg, name, sessionGroup, sessionTags)
-                    .then(async (sid) => {
-                        if (sessionGroup) await MoveSession(sid, sessionGroup); // 新会话落入分组
-                        refreshSessions();
-                    })
-                    .catch((e: any) => console.warn('保存会话失败', e));
-            }
+            await doConnect();
         } catch (e: any) {
             const msg = e?.message ?? String(e);
             // strict 模式首次连接: 后端返回 HOST_KEY_UNVERIFIED|host|port|fingerprint
@@ -188,9 +194,9 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
                 if (ok) {
                     try {
                         await AcceptHostKey(host, port);
-                        setError('');
-                        await connect(); // 记录成功后重连
-                        return;
+                        // 信任后重试连接: 直接调 doConnect 而非递归 connect,
+                        // 避免再次抛出非 HOST_KEY 异常时被外层 catch 重复 setError
+                        await doConnect();
                     } catch (e2: any) {
                         setError(e2?.message ?? String(e2));
                     }

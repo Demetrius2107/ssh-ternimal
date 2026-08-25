@@ -7,6 +7,9 @@ import {
     SftpRename,
     SftpUpload,
     SftpDownload,
+    SftpCancelTask,
+    SftpRemoveTask,
+    SftpClearFinished,
     EditRemoteFile,
     LocalListDir,
     LocalParent,
@@ -95,6 +98,59 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
     async function refreshAll() {
         await loadLocal(localDir);
         await loadRemote(remoteDir);
+    }
+
+    // 取消传输任务 (运行中的在下个 chunk 边界停止)
+    async function cancelTask(id: number) {
+        try {
+            await SftpCancelTask(id);
+            setError('');
+        } catch (e: any) {
+            setError(`取消失败: ${e?.message ?? e}`);
+        }
+    }
+
+    // 移除单条已结束任务记录
+    async function removeTask(id: number) {
+        try {
+            await SftpRemoveTask(id);
+            setTransfers((prev) => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            });
+        } catch (e: any) {
+            setError(`移除失败: ${e?.message ?? e}`);
+        }
+    }
+
+    // 清理全部已结束任务
+    async function clearFinished() {
+        try {
+            await SftpClearFinished();
+            setTransfers((prev) => {
+                const next: Record<number, model.TransferTask> = {};
+                for (const t of Object.values(prev)) {
+                    if (t.status === 'running') next[t.taskId] = t;
+                }
+                return next;
+            });
+        } catch (e: any) {
+            setError(`清理失败: ${e?.message ?? e}`);
+        }
+    }
+
+    // 任务完成后自动从列表移除 (避免堆积): 延时后本地清理
+    function autoRemoveFinished(t: model.TransferTask) {
+        if (t.status !== 'running') {
+            setTimeout(() => {
+                setTransfers((prev) => {
+                    const next = { ...prev };
+                    delete next[t.taskId];
+                    return next;
+                });
+            }, 3000);
+        }
     }
 
     async function mkdirRemote() {
@@ -340,8 +396,13 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
             {/* 传输队列 */}
             {transferList.length > 0 && (
                 <div className="transfers">
+                    <div className="transfers-head">
+                        <span className="th-title">传输队列</span>
+                        <button className="th-clear" onClick={clearFinished}>清理已完成</button>
+                    </div>
                     {transferList.map((t) => {
                         const pct = t.size > 0 ? Math.min(100, Math.round((t.transferred / t.size) * 100)) : 0;
+                        autoRemoveFinished(t);
                         return (
                             <div key={t.taskId} className="transfer-row">
                                 <span className={`t-status t-${t.status}`}>{t.direction === 'upload' ? '↑' : '↓'}</span>
@@ -353,11 +414,18 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
                                 <span className="t-pct">
                                     {t.status === 'error'
                                         ? t.error
+                                        : t.status === 'cancelled'
+                                        ? '已取消'
                                         : `${formatSize(t.transferred)} / ${formatSize(t.size)} (${pct}%)`}
                                 </span>
                                 <div className="t-bar">
                                     <div className="t-bar-fill" style={{ width: `${pct}%` }} />
                                 </div>
+                                {t.status === 'running' ? (
+                                    <button className="t-btn t-cancel" onClick={() => cancelTask(t.taskId)}>取消</button>
+                                ) : (
+                                    <button className="t-btn t-remove" onClick={() => removeTask(t.taskId)}>移除</button>
+                                )}
                             </div>
                         );
                     })}

@@ -495,6 +495,69 @@ body.theme-light {
     color: #ff6b6b;
 }
 
+.t-cancelled {
+    color: #d0a44a;
+}
+
+/* 传输队列头: 标题 + 清理已完成 */
+.transfers-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--hover);
+    border-bottom: 1px solid var(--border);
+}
+
+.th-title {
+    flex: 1;
+}
+
+.th-clear {
+    padding: 2px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.th-clear:hover {
+    background: var(--border-strong);
+}
+
+/* 传输任务行按钮: 取消 / 移除 */
+.t-btn {
+    padding: 2px 10px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+.t-cancel {
+    background: rgba(138, 45, 45, 0.7);
+    color: #fff;
+}
+
+.t-cancel:hover {
+    background: rgba(180, 60, 60, 0.9);
+}
+
+.t-remove {
+    background: var(--border-strong);
+    color: var(--text);
+}
+
+.t-remove:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
 .t-name {
     flex: 1;
     min-width: 0;
