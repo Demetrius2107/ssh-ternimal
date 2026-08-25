@@ -34,8 +34,9 @@ type Session struct {
 	closed      bool
 	output      chan model.OutputMsg
 	done        chan error
-	stop        chan struct{} // keepalive 停止信号
+	stop        chan struct{} // keepalive/pump 停止信号
 	closeOnce   sync.Once
+	pumpWg      sync.WaitGroup // 等待 pump goroutine 退出后再关闭 output
 	rxBytes     atomic.Int64
 	txBytes     atomic.Int64
 	keepAliveMs atomic.Int64
@@ -283,6 +284,7 @@ func connectOnce(cfg model.SshConfig) (*Session, error) {
 	if jumpClient != nil {
 		s.jumpClient = jumpClient
 	}
+	s.pumpWg.Add(2)
 	go s.pump(stdout)
 	go s.pump(stderr)
 	go s.keepAlive()
@@ -333,14 +335,20 @@ func (s *Session) keepAlive() {
 }
 
 // pump 读取输出, 按会话编码转码为 UTF-8 后投递到 channel
+// 写 channel 与 stop 信号竞争: 会话关闭后不再阻塞, 避免 goroutine 泄漏
 func (s *Session) pump(r io.Reader) {
+	defer s.pumpWg.Done()
 	conv := enc.NewConverter(s.encoding)
 	buf := make([]byte, 8192)
 	for {
 		n, err := r.Read(buf)
 		if n > 0 {
 			s.rxBytes.Add(int64(n))
-			s.output <- model.OutputMsg{Data: conv.Decode(buf[:n])}
+			select {
+			case s.output <- model.OutputMsg{Data: conv.Decode(buf[:n])}:
+			case <-s.stop:
+				return
+			}
 		}
 		if err != nil {
 			return
@@ -401,13 +409,17 @@ func (s *Session) ListenRemote(addr string) (net.Listener, error) {
 }
 
 // Exec 在远程执行命令并返回输出 (资源监控等一次性命令用)
+// 不全程持 s.mu: CombinedOutput 是阻塞网络调用, 持锁会卡住 Send/Resize/Close
+// 仅在检查 closed 标志时短暂持锁; s.client 关闭后 NewSession 会返回错误, 安全
 func (s *Session) Exec(cmd string) (string, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.closed {
+		s.mu.Unlock()
 		return "", errors.New("会话已关闭")
 	}
-	sess, err := s.client.NewSession()
+	client := s.client
+	s.mu.Unlock()
+	sess, err := client.NewSession()
 	if err != nil {
 		return "", err
 	}
@@ -441,6 +453,8 @@ func (s *Session) Resize(rows, cols int) error {
 }
 
 // Close 关闭会话 (幂等)
+// 顺序: 关停止信号 → 关底层连接(让 pump 的 Read 出错退出) → 等 pump 退出 → 关 output channel
+// output channel 关闭后, attachSession 的 for range 才能正常退出, 避免消费 goroutine 泄漏
 func (s *Session) Close() {
 	s.closeOnce.Do(func() {
 		close(s.stop)
@@ -457,6 +471,8 @@ func (s *Session) Close() {
 		if s.jumpClient != nil {
 			s.jumpClient.Close()
 		}
+		s.pumpWg.Wait()
+		close(s.output)
 	})
 }
 

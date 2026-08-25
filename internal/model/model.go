@@ -60,10 +60,11 @@ type TransferTask struct {
 	IsDir       bool   `json:"isDir"`
 }
 
-// StoredSession 保存的会话配置 (不含密码, 密码存系统凭据库)
+// StoredSession 保存的会话配置 (不含密码/私钥内容, 敏感值存系统凭据库)
 type StoredSession struct {
 	ID           string   `json:"id"`
 	Name         string   `json:"name"`
+	Protocol     string   `json:"protocol"` // ssh / telnet (空=ssh)
 	Host         string   `json:"host"`
 	Port         int      `json:"port"`
 	Username     string   `json:"username"`
@@ -76,6 +77,14 @@ type StoredSession struct {
 	ProxyUser    string   `json:"proxyUser"`
 	CredentialID string   `json:"credentialId"` // 集中凭据引用 (空=使用会话自身密码)
 	Tags         []string `json:"tags"`         // 标签列表 (可空, 用于筛选)
+
+	// 私钥与跳板机 (保存后重新加载可完整还原, 不再丢失)
+	PrivateKeyPath   string `json:"privateKeyPath"` // 私钥文件路径（私钥内容与口令存凭据库）
+	OTP              string `json:"otp,omitempty"`  // 双因素验证码
+	JumpHost         string `json:"jumpHost"`
+	JumpPort         int    `json:"jumpPort"`
+	JumpUser         string `json:"jumpUser"`
+	JumpPrivateKeyPath string `json:"jumpPrivateKeyPath"`
 }
 
 // HistoryEntry 历史记录条目
@@ -104,8 +113,10 @@ type AiStatus struct {
 }
 
 // AiDelta AI 流式输出事件负载
+// SessionID: 内联报错解释 (ai-explain-*) 标记所属会话, 供前端过滤; AI 面板 (ai-*) 为 0
 type AiDelta struct {
-	Text string `json:"text"`
+	Text      string `json:"text"`
+	SessionID uint64 `json:"sessionId"`
 }
 
 // UpdateInfo 客户端更新信息 (CheckUpdate 返回)

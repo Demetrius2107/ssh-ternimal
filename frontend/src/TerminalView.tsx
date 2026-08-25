@@ -62,16 +62,35 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
     // 输出节流: 高频输出合并到一帧内一次写入, 避免大日志卡顿
     const pendingRef = useRef('');
     const rafRef = useRef<number | null>(null);
+    // active 镜像: 非激活会话仍累积输出到 pendingRef (不丢数据), 但跳过 term.write 渲染
+    // 避免重建终端 (useEffect 依赖 [sessionId]), 用 ref 持有最新值
+    const activeRef = useRef(active);
+    useEffect(() => {
+        const wasInactive = !activeRef.current;
+        activeRef.current = active;
+        // 从非激活切回激活: 立即 flush 积压的输出
+        if (active && wasInactive && pendingRef.current) {
+            scheduleFlush();
+        }
+    }, [active]);
 
     // 合并并写入待处理输出 (rAF 单帧内只 flush 一次)
+    // 非激活会话: 仍累积到 pendingRef (切回时不丢数据), 但跳过 term.write 避免后台渲染开销
     function scheduleFlush() {
         if (rafRef.current !== null) return; // 已有排队
         rafRef.current = requestAnimationFrame(() => {
             rafRef.current = null;
             const term = termRef.current;
             if (term && pendingRef.current) {
-                term.write(pendingRef.current);
-                pendingRef.current = '';
+                if (activeRef.current) {
+                    term.write(pendingRef.current);
+                    pendingRef.current = '';
+                }
+                // 非激活时保留 pendingRef, 待切回时由 active useEffect 触发 flush
+                // 上限保护: 积压超 512KB 丢弃前段, 避免隐藏会话内存无限增长
+                if (!activeRef.current && pendingRef.current.length > 512 * 1024) {
+                    pendingRef.current = pendingRef.current.slice(-256 * 1024);
+                }
             }
         });
     }
@@ -122,13 +141,17 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
         const offExit = EventsOn('ssh-exit', onExit);
         const offReconnect = EventsOn('ssh-reconnect', onReconnect);
         // 内联 AI 报错解释流式事件 (独立事件名, 不与 AI 面板冲突)
-        const offExplainDelta = EventsOn('ai-explain-delta', (e: { text: string }) => {
+        // payload 带 sessionId, 只处理本会话的流 (多会话时防止串扰)
+        const offExplainDelta = EventsOn('ai-explain-delta', (e: { sessionId?: number; text: string }) => {
+            if (e.sessionId !== sessionId) return;
             setExplainText((prev) => prev + e.text);
         });
-        const offExplainDone = EventsOn('ai-explain-done', () => {
+        const offExplainDone = EventsOn('ai-explain-done', (e: { sessionId?: number }) => {
+            if (e.sessionId !== sessionId) return;
             setExplaining(false);
         });
-        const offExplainErr = EventsOn('ai-explain-error', (e: { text: string }) => {
+        const offExplainErr = EventsOn('ai-explain-error', (e: { sessionId?: number; text: string }) => {
+            if (e.sessionId !== sessionId) return;
             setExplaining(false);
             setExplainText((prev) => prev + '\n[错误] ' + e.text);
         });

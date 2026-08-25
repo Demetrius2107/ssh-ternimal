@@ -146,12 +146,20 @@ export default function VncPanel() {
         VncPointerEvent(sessionIdRef.current, 0, x, y);
     }
 
-    function onKey(e: React.KeyboardEvent) {
+    // 按键: 按下发 down, 松开发 up (分别只发一次, 避免远端收到重复键)
+    function onKeyDown(e: React.KeyboardEvent) {
         if (!connected) return;
         e.preventDefault();
         const ks = KEY_KEYSYM[e.key] ?? (e.key.length === 1 ? e.key.charCodeAt(0) : 0);
         if (!ks) return;
         VncKeyEvent(sessionIdRef.current, ks, true);
+    }
+
+    function onKeyUp(e: React.KeyboardEvent) {
+        if (!connected) return;
+        e.preventDefault();
+        const ks = KEY_KEYSYM[e.key] ?? (e.key.length === 1 ? e.key.charCodeAt(0) : 0);
+        if (!ks) return;
         VncKeyEvent(sessionIdRef.current, ks, false);
     }
 
@@ -204,8 +212,8 @@ export default function VncPanel() {
                     onMouseDown={onMouseDown}
                     onMouseUp={onMouseUp}
                     onWheel={onWheel}
-                    onKeyDown={onKey}
-                    onKeyUp={onKey}
+                    onKeyDown={onKeyDown}
+                    onKeyUp={onKeyUp}
                 />
             </div>
         </div>

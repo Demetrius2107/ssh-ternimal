@@ -210,8 +210,8 @@ export function SaveCredential(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SaveCredential'](arg1, arg2, arg3, arg4);
 }
 
-export function SaveSession(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13) {
-  return window['go']['main']['App']['SaveSession'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13);
+export function SaveSession(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SaveSession'](arg1, arg2, arg3, arg4);
 }
 
 export function SaveSnippet(arg1, arg2, arg3) {

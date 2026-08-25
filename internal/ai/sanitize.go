@@ -47,7 +47,9 @@ func NewSanitizer(keywords []string) *Sanitizer {
 func (s *Sanitizer) Sanitize(text string) string {
 	out := text
 	for _, re := range credentialPatterns {
-		out = re.ReplaceAllString(out, s.mask(out, re))
+		out = re.ReplaceAllStringFunc(out, func(match string) string {
+			return s.mask(match, re)
+		})
 	}
 	for _, kw := range s.keywords {
 		out = strings.ReplaceAll(out, kw, "***")
@@ -56,8 +58,9 @@ func (s *Sanitizer) Sanitize(text string) string {
 }
 
 // mask 按模式生成替换串: 尽量保留键名与结构, 仅掩盖值
-func (s *Sanitizer) mask(text string, re *regexp.Regexp) string {
-	m := re.FindStringSubmatch(text)
+// 注意: match 是单个匹配片段, 在其上调用 FindStringSubmatch 生成该片段专属的替换串
+func (s *Sanitizer) mask(match string, re *regexp.Regexp) string {
+	m := re.FindStringSubmatch(match)
 	switch {
 	case len(m) >= 4 && strings.Contains(re.String(), `-----BEGIN`):
 		return "*** [PRIVATE KEY 已脱敏] ***"

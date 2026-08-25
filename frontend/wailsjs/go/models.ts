@@ -285,6 +285,7 @@ export namespace model {
 	export class StoredSession {
 	    id: string;
 	    name: string;
+	    protocol: string;
 	    host: string;
 	    port: number;
 	    username: string;
@@ -297,6 +298,12 @@ export namespace model {
 	    proxyUser: string;
 	    credentialId: string;
 	    tags: string[];
+	    privateKeyPath: string;
+	    otp?: string;
+	    jumpHost: string;
+	    jumpPort: number;
+	    jumpUser: string;
+	    jumpPrivateKeyPath: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new StoredSession(source);
@@ -306,6 +313,7 @@ export namespace model {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.name = source["name"];
+	        this.protocol = source["protocol"];
 	        this.host = source["host"];
 	        this.port = source["port"];
 	        this.username = source["username"];
@@ -318,6 +326,12 @@ export namespace model {
 	        this.proxyUser = source["proxyUser"];
 	        this.credentialId = source["credentialId"];
 	        this.tags = source["tags"];
+	        this.privateKeyPath = source["privateKeyPath"];
+	        this.otp = source["otp"];
+	        this.jumpHost = source["jumpHost"];
+	        this.jumpPort = source["jumpPort"];
+	        this.jumpUser = source["jumpUser"];
+	        this.jumpPrivateKeyPath = source["jumpPrivateKeyPath"];
 	    }
 	}
 	export class SysMetrics {

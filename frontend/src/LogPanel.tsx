@@ -77,8 +77,10 @@ export default function LogPanel() {
         setErr('');
         setActive(null);
         try {
-            setMatches((await SearchHistory(kw.trim())) ?? []);
-            if (matches.length === 0) setErr('无命中');
+            // 用返回值判断命中数, 不能读闭包里的旧 matches (setMatches 是异步的)
+            const result = (await SearchHistory(kw.trim())) ?? [];
+            setMatches(result);
+            if (result.length === 0) setErr('无命中');
         } catch (e: any) {
             setErr(e?.message ?? String(e));
         } finally {

@@ -65,6 +65,7 @@ type App struct {
 	manualClose map[uint64]bool               // 用户主动断开标记 (不自动重连)
 	cpuPrev     map[uint64]cpuSample          // CPU 采样差值基准 (资源监控)
 	auditStart  map[uint64]time.Time          // 会话审计开始时间 (连接建立时记录)
+	auditIDs    map[uint64]string             // 会话审计条目 ID (按 ID 精确补记, 避免误覆盖并发会话)
 	monHist     map[uint64][]model.SysMetrics // 监控历史采样环形缓冲 (折线图数据源)
 
 	// 待用户确认的主机密钥 (strict 模式首次连接): "host:port" -> 公钥
@@ -102,6 +103,7 @@ func NewApp() *App {
 		manualClose:     make(map[uint64]bool),
 		cpuPrev:         make(map[uint64]cpuSample),
 		auditStart:      make(map[uint64]time.Time),
+		auditIDs:        make(map[uint64]string),
 		monHist:         make(map[uint64][]model.SysMetrics),
 		pendingHostKeys: make(map[string]ssh.PublicKey),
 		tunnels:         make(map[uint64]*model.Tunnel),
@@ -227,15 +229,12 @@ func (a *App) Connect(cfg model.SshConfig) (uint64, error) {
 	return id, nil
 }
 
-// startAudit 建立审计条目: 记录开始时间/主机/用户/协议/历史文件, 存 auditStart 供结束补记
+// startAudit 建立审计条目: 记录开始时间/主机/用户/协议/历史文件, 存 auditStart/auditIDs 供结束补记
 func (a *App) startAudit(id uint64, cfg model.SshConfig, proto string, hf *historyFile) {
 	if a.store == nil {
 		return
 	}
 	now := time.Now()
-	a.mu.Lock()
-	a.auditStart[id] = now
-	a.mu.Unlock()
 	label := fmt.Sprintf("%s@%s:%d", cfg.Username, cfg.Host, cfg.Port)
 	entry := model.AuditEntry{
 		StartTime: now.Format("2006-01-02 15:04:05"),
@@ -249,51 +248,40 @@ func (a *App) startAudit(id uint64, cfg model.SshConfig, proto string, hf *histo
 		entry.History = hf.path
 		entry.CommandLog = hf.commandLogPath()
 	}
-	_, _ = a.store.SaveAudit(entry)
+	auditID, err := a.store.SaveAudit(entry)
+	if err != nil {
+		return
+	}
+	a.mu.Lock()
+	a.auditStart[id] = now
+	a.auditIDs[id] = auditID
+	a.mu.Unlock()
 }
 
-// finishAudit 会话结束时补记审计: 结束时间/时长/收发字节
+// finishAudit 会话结束时补记审计: 按 auditIDs 中保存的 ID 精确覆盖更新结束时间/时长/收发字节
+// (不再用"第一条未完结"匹配, 避免多并发会话时误覆盖其他会话的审计条目)
 func (a *App) finishAudit(id uint64, sess model.TermSession) {
 	if a.store == nil {
 		return
 	}
 	a.mu.Lock()
 	start, ok := a.auditStart[id]
+	auditID, ok2 := a.auditIDs[id]
 	delete(a.auditStart, id)
+	delete(a.auditIDs, id)
 	a.mu.Unlock()
-	if !ok {
+	if !ok || !ok2 {
 		return
 	}
 	m := sess.Metrics()
 	entry := model.AuditEntry{
+		ID:       auditID,
 		EndTime:  time.Now().Format("2006-01-02 15:04:05"),
 		Duration: int64(time.Since(start).Seconds()),
 		BytesIn:  m.BytesIn,
 		BytesOut: m.BytesOut,
 	}
-	// 按 label 找对应条目: 直接读列表匹配不可靠, 这里用最近一条未结束的覆盖更新
-	// (单会话场景下最新一条即为本会话; 简化: 存储层按 ID 覆盖, 用 label+start 定位)
-	_ = a.updateAuditEntry(entry)
-}
-
-// updateAuditEntry 用结束信息更新最近一条审计 (StartTime 最早未完结的会被覆盖)
-func (a *App) updateAuditEntry(entry model.AuditEntry) error {
-	list, err := a.store.ListAudit()
-	if err != nil {
-		return err
-	}
-	for i := range list {
-		e := list[i]
-		if e.EndTime == "" { // 未完结的条目即为本会话
-			e.EndTime = entry.EndTime
-			e.Duration = entry.Duration
-			e.BytesIn = entry.BytesIn
-			e.BytesOut = entry.BytesOut
-			_, err := a.store.SaveAudit(e)
-			return err
-		}
-	}
-	return nil
+	_, _ = a.store.SaveAudit(entry)
 }
 
 // attachSession 挂接会话输出泵与断线处理 (初次连接与自动重连共用)
@@ -323,12 +311,16 @@ func (a *App) attachSession(id uint64, sess model.TermSession, cfg model.SshConf
 			msg = err.Error()
 		}
 		runtime.EventsEmit(a.ctx, "ssh-exit", SshExit{SessionID: id, Error: msg})
+		// 关闭底层会话: 确保 output channel 被关闭, 让上面的 Output 消费 goroutine 退出
+		// (SSH 的 Wait goroutine 已调过 Close, 此处幂等; Telnet 的 pump 不再自调 Close, 此处为主关闭路径)
+		sess.Close()
 		// 会话审计完结: 补记结束时间/时长/收发字节
 		a.finishAudit(id, sess)
 		a.mu.Lock()
 		delete(a.sessions, id)
 		delete(a.connConfigs, id)
 		delete(a.manualClose, id)
+		delete(a.auditIDs, id)
 		if hf != nil {
 			hf.close()
 			delete(a.history, id)
@@ -1123,8 +1115,11 @@ type vaultPayload struct {
 
 type vaultSession struct {
 	model.StoredSession
-	Password      string `json:"password"`
-	ProxyPassword string `json:"proxyPassword"`
+	Password       string `json:"password"`
+	ProxyPassword  string `json:"proxyPassword"`
+	JumpPassword   string `json:"jumpPassword"`
+	Passphrase     string `json:"passphrase"`
+	JumpPassphrase string `json:"jumpPassphrase"`
 }
 
 // VaultExport 导出全部会话与凭据为端到端加密字符串 (AES-GCM + 用户密码派生密钥)
@@ -1141,6 +1136,9 @@ func (a *App) VaultExport(password string) (string, error) {
 		vs := vaultSession{StoredSession: s}
 		vs.Password, _ = keyring.Get(aiKeyringService, s.ID)
 		vs.ProxyPassword, _ = keyring.Get(aiKeyringService, s.ID+":proxy")
+		vs.JumpPassword, _ = keyring.Get(aiKeyringService, s.ID+":jump")
+		vs.Passphrase, _ = keyring.Get(aiKeyringService, s.ID+":pass")
+		vs.JumpPassphrase, _ = keyring.Get(aiKeyringService, s.ID+":jumppass")
 		payload.Sessions = append(payload.Sessions, vs)
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
@@ -1170,6 +1168,15 @@ func (a *App) VaultImport(encoded, password string) error {
 		}
 		if vs.ProxyPassword != "" {
 			_ = keyring.Set(aiKeyringService, id+":proxy", vs.ProxyPassword)
+		}
+		if vs.JumpPassword != "" {
+			_ = keyring.Set(aiKeyringService, id+":jump", vs.JumpPassword)
+		}
+		if vs.Passphrase != "" {
+			_ = keyring.Set(aiKeyringService, id+":pass", vs.Passphrase)
+		}
+		if vs.JumpPassphrase != "" {
+			_ = keyring.Set(aiKeyringService, id+":jumppass", vs.JumpPassphrase)
 		}
 	}
 	return nil
@@ -1513,8 +1520,9 @@ func (a *App) VncClose(id uint64) {
 
 // ---------- 会话管理 ----------
 
-// SaveSession 保存会话配置, 密码存系统凭据库, 返回会话 ID
-func (a *App) SaveSession(name, host string, port int, username, password, encoding, hostKeyMode, proxyType, proxyHost string, proxyPort int, proxyUser, proxyPassword, tags string) (string, error) {
+// SaveSession 保存会话配置 (含跳板机/私钥路径/OTP), 敏感值存系统凭据库, 返回会话 ID
+// cfg 携带全部连接字段; name/group/tags 为 UI 层信息 (不在 SshConfig 中)
+func (a *App) SaveSession(cfg model.SshConfig, name, group, tags string) (string, error) {
 	if a.store == nil {
 		return "", errors.New("会话存储未初始化")
 	}
@@ -1525,18 +1533,38 @@ func (a *App) SaveSession(name, host string, port int, username, password, encod
 			tagList = append(tagList, t)
 		}
 	}
-	id, err := a.store.Save(model.StoredSession{
-		Name: name, Host: host, Port: port, Username: username,
-		Encoding: encoding, HostKeyMode: hostKeyMode,
-		ProxyType: proxyType, ProxyHost: proxyHost, ProxyPort: proxyPort, ProxyUser: proxyUser,
-		Tags: tagList,
-	}, password)
+	stored := model.StoredSession{
+		Name: name, Protocol: cfg.Protocol, Host: cfg.Host, Port: cfg.Port, Username: cfg.Username,
+		Encoding: cfg.Encoding, HostKeyMode: cfg.HostKeyMode, Group: group,
+		ProxyType: cfg.ProxyType, ProxyHost: cfg.ProxyHost, ProxyPort: cfg.ProxyPort, ProxyUser: cfg.ProxyUser,
+		CredentialID: cfg.CredentialID, Tags: tagList,
+		PrivateKeyPath: cfg.PrivateKeyPath, OTP: cfg.OTP,
+		JumpHost: cfg.JumpHost, JumpPort: cfg.JumpPort, JumpUser: cfg.JumpUser,
+		JumpPrivateKeyPath: cfg.JumpPrivateKeyPath,
+	}
+	// 密码/口令类敏感值入系统凭据库 (CredentialID 引用时 password 为空, 由凭据库提供)
+	id, err := a.store.Save(stored, cfg.Password)
 	if err != nil {
 		return "", err
 	}
-	if proxyPassword != "" {
-		if err := keyring.Set(aiKeyringService, id+":proxy", proxyPassword); err != nil {
+	if cfg.ProxyPassword != "" {
+		if err := keyring.Set(aiKeyringService, id+":proxy", cfg.ProxyPassword); err != nil {
 			return "", fmt.Errorf("保存代理密码失败: %v", err)
+		}
+	}
+	if cfg.JumpPassword != "" {
+		if err := keyring.Set(aiKeyringService, id+":jump", cfg.JumpPassword); err != nil {
+			return "", fmt.Errorf("保存跳板机密码失败: %v", err)
+		}
+	}
+	if cfg.Passphrase != "" {
+		if err := keyring.Set(aiKeyringService, id+":pass", cfg.Passphrase); err != nil {
+			return "", fmt.Errorf("保存私钥口令失败: %v", err)
+		}
+	}
+	if cfg.JumpPassphrase != "" {
+		if err := keyring.Set(aiKeyringService, id+":jumppass", cfg.JumpPassphrase); err != nil {
+			return "", fmt.Errorf("保存跳板机私钥口令失败: %v", err)
 		}
 	}
 	return id, nil
@@ -1836,18 +1864,18 @@ func (a *App) AiExplain(sessionID uint64, prompt string) error {
 		var reply strings.Builder
 		err := p.Chat(ctx, mdl, messages, func(delta string) {
 			reply.WriteString(delta)
-			runtime.EventsEmit(a.ctx, "ai-explain-delta", model.AiDelta{Text: delta})
+			runtime.EventsEmit(a.ctx, "ai-explain-delta", model.AiDelta{Text: delta, SessionID: sessionID})
 		})
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				runtime.EventsEmit(a.ctx, "ai-explain-error", model.AiDelta{Text: "已中断"})
+				runtime.EventsEmit(a.ctx, "ai-explain-error", model.AiDelta{Text: "已中断", SessionID: sessionID})
 			} else {
-				runtime.EventsEmit(a.ctx, "ai-explain-error", model.AiDelta{Text: err.Error()})
+				runtime.EventsEmit(a.ctx, "ai-explain-error", model.AiDelta{Text: err.Error(), SessionID: sessionID})
 			}
 			return
 		}
 		_ = a.store.AddAIUsage(month, ai.EstimateTokens(prompt)+ai.EstimateTokens(reply.String()))
-		runtime.EventsEmit(a.ctx, "ai-explain-done", nil)
+		runtime.EventsEmit(a.ctx, "ai-explain-done", model.AiDelta{SessionID: sessionID})
 	}()
 	return nil
 }
@@ -1894,7 +1922,7 @@ func (a *App) DeleteSession(id string) error {
 	return a.store.Delete(id)
 }
 
-// LoadSession 加载会话配置与密码
+// LoadSession 加载会话配置与密码 (含跳板机/私钥路径/口令, 完整还原保存时的连接配置)
 func (a *App) LoadSession(id string) (model.SshConfig, error) {
 	if a.store == nil {
 		return model.SshConfig{}, errors.New("会话存储未初始化")
@@ -1904,11 +1932,31 @@ func (a *App) LoadSession(id string) (model.SshConfig, error) {
 		return model.SshConfig{}, err
 	}
 	proxyPw, _ := keyring.Get(aiKeyringService, id+":proxy")
+	jumpPw, _ := keyring.Get(aiKeyringService, id+":jump")
+	passphrase, _ := keyring.Get(aiKeyringService, id+":pass")
+	jumpPass, _ := keyring.Get(aiKeyringService, id+":jumppass")
 	return model.SshConfig{
-		Host: sess.Host, Port: sess.Port, Username: sess.Username, Password: pw,
-		Encoding: sess.Encoding, HostKeyMode: sess.HostKeyMode,
-		ProxyType: sess.ProxyType, ProxyHost: sess.ProxyHost, ProxyPort: sess.ProxyPort,
-		ProxyUser: sess.ProxyUser, ProxyPassword: proxyPw,
-		CredentialID: sess.CredentialID,
+		Protocol:       sess.Protocol,
+		Host:           sess.Host,
+		Port:           sess.Port,
+		Username:       sess.Username,
+		Password:       pw,
+		PrivateKeyPath: sess.PrivateKeyPath,
+		Passphrase:     passphrase,
+		OTP:            sess.OTP,
+		Encoding:       sess.Encoding,
+		HostKeyMode:    sess.HostKeyMode,
+		JumpHost:           sess.JumpHost,
+		JumpPort:           sess.JumpPort,
+		JumpUser:           sess.JumpUser,
+		JumpPassword:       jumpPw,
+		JumpPrivateKeyPath: sess.JumpPrivateKeyPath,
+		JumpPassphrase:     jumpPass,
+		ProxyType:     sess.ProxyType,
+		ProxyHost:     sess.ProxyHost,
+		ProxyPort:     sess.ProxyPort,
+		ProxyUser:     sess.ProxyUser,
+		ProxyPassword: proxyPw,
+		CredentialID:  sess.CredentialID,
 	}, nil
 }

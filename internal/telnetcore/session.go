@@ -38,6 +38,8 @@ type Session struct {
 	mu        sync.Mutex
 	closed    bool
 	closeOnce sync.Once
+	stop      chan struct{}   // pump 停止信号
+	pumpWg    sync.WaitGroup // 等待 pump 退出后再关闭 output
 	rows      int
 	cols      int
 	rxBytes   atomic.Int64
@@ -59,16 +61,21 @@ func Connect(host string, port int, encoding string) (*Session, error) {
 		conn:     conn,
 		output:   make(chan model.OutputMsg, 64),
 		done:     make(chan error, 1),
+		stop:     make(chan struct{}),
 		rows:     40,
 		cols:     120,
 		encoding: encoding,
 	}
+	s.pumpWg.Add(1)
 	go s.pump()
 	return s, nil
 }
 
 // pump 读取数据, 处理 IAC 协商, 其余数据按会话编码转码为 UTF-8 后投递
+// pump 不自调 Close (避免 WaitGroup 死锁); 读错误时发 done 信号后退出,
+// 由 attachSession 的 Done goroutine 调 Close 关闭 output channel
 func (s *Session) pump() {
+	defer s.pumpWg.Done()
 	conv := enc.NewConverter(s.encoding)
 	buf := make([]byte, 8192)
 	var leftover []byte
@@ -83,7 +90,11 @@ func (s *Session) pump() {
 				leftover = rest // IAC 序列跨包, 与下一包拼接
 			}
 			if len(data) > 0 {
-				s.output <- model.OutputMsg{Data: conv.Decode(data)}
+				select {
+				case s.output <- model.OutputMsg{Data: conv.Decode(data)}:
+				case <-s.stop:
+					return
+				}
 			}
 		}
 		if err != nil {
@@ -91,7 +102,6 @@ func (s *Session) pump() {
 			case s.done <- err:
 			default:
 			}
-			s.Close()
 			return
 		}
 	}
@@ -234,11 +244,16 @@ func (s *Session) Metrics() model.Metrics {
 }
 
 // Close 关闭连接 (幂等)
+// 顺序: 关停止信号 → 关底层连接(让 pump 的 Read 出错退出) → 等 pump 退出 → 关 output channel
+// output channel 关闭后, attachSession 的 for range 才能正常退出, 避免消费 goroutine 泄漏
 func (s *Session) Close() {
 	s.closeOnce.Do(func() {
+		close(s.stop)
 		s.mu.Lock()
 		s.closed = true
 		s.mu.Unlock()
 		_ = s.conn.Close()
+		s.pumpWg.Wait()
+		close(s.output)
 	})
 }

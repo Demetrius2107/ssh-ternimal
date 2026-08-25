@@ -72,12 +72,30 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
         if (!selectedSession) return;
         try {
             const cfg = await LoadSession(selectedSession);
+            setProtocol((cfg.protocol as 'ssh' | 'telnet') || 'ssh');
             setHost(cfg.host);
             setPort(cfg.port);
             setUsername(cfg.username);
             setPassword(cfg.password);
+            // 认证方式回填: 有私钥路径则 key, 否则 password
+            if (cfg.privateKeyPath) {
+                setAuthMethod('key');
+                setKeyPath(cfg.privateKeyPath);
+            } else {
+                setAuthMethod('password');
+                setKeyPath('');
+            }
+            setPassphrase(cfg.passphrase ?? '');
+            setOtp(cfg.otp ?? '');
             setEncoding(cfg.encoding ?? 'auto');
             setHostKeyMode(cfg.hostKeyMode ?? 'accept-new');
+            // 跳板机回填
+            setUseJump(!!cfg.jumpHost);
+            setJumpHost(cfg.jumpHost ?? '');
+            setJumpPort(cfg.jumpPort || 22);
+            setJumpUser(cfg.jumpUser ?? '');
+            setJumpPassword(cfg.jumpPassword ?? '');
+            // 代理回填
             setUseProxy(!!cfg.proxyType && !!cfg.proxyHost);
             setProxyType((cfg.proxyType as 'http' | 'socks5') || 'http');
             setProxyHost(cfg.proxyHost ?? '');
@@ -150,7 +168,8 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
             onConnected(id, label);
             if (saveSession) {
                 const name = sessionName.trim() || `${username}@${host}`;
-                SaveSession(name, host, port, username, password, encoding, hostKeyMode, useProxy ? proxyType : '', useProxy ? proxyHost : '', proxyPort, useProxy ? proxyUser : '', useProxy ? proxyPassword : '', sessionTags)
+                // 复用已构造的 cfg (含跳板机/私钥路径/口令/OTP/代理), 连同分组与标签一起保存
+                SaveSession(cfg, name, sessionGroup, sessionTags)
                     .then(async (sid) => {
                         if (sessionGroup) await MoveSession(sid, sessionGroup); // 新会话落入分组
                         refreshSessions();
