@@ -230,8 +230,16 @@ export function SessionMeta(arg1) {
   return window['go']['main']['App']['SessionMeta'](arg1);
 }
 
+export function SftpCancelTask(arg1) {
+  return window['go']['main']['App']['SftpCancelTask'](arg1);
+}
+
 export function SftpChmod(arg1, arg2, arg3) {
   return window['go']['main']['App']['SftpChmod'](arg1, arg2, arg3);
+}
+
+export function SftpClearFinished() {
+  return window['go']['main']['App']['SftpClearFinished']();
 }
 
 export function SftpDelete(arg1, arg2) {
@@ -252,6 +260,10 @@ export function SftpMkdir(arg1, arg2) {
 
 export function SftpPwd(arg1) {
   return window['go']['main']['App']['SftpPwd'](arg1);
+}
+
+export function SftpRemoveTask(arg1) {
+  return window['go']['main']['App']['SftpRemoveTask'](arg1);
 }
 
 export function SftpRename(arg1, arg2, arg3) {

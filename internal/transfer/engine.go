@@ -2,6 +2,7 @@
 package transfer
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/pkg/sftp"
 
@@ -19,8 +21,12 @@ import (
 
 const (
 	chunkSize     = 64 * 1024
-	maxConcurrent = 3 // 全局并发传输任务上限
+	maxConcurrent = 3  // 全局并发传输任务上限
+	emitInterval  = 100 * time.Millisecond // 进度事件节流间隔
 )
+
+// errCancelled 任务被用户取消时的哨兵错误
+var errCancelled = errors.New("传输已取消")
 
 // fileRef 待传输的文件
 type fileRef struct {
@@ -34,15 +40,19 @@ type Engine struct {
 	mu         sync.Mutex
 	nextID     uint64
 	tasks      map[uint64]*model.TransferTask
-	onProgress func(model.TransferTask) // 进度回调, 由 app 层接 wails 事件
-	sem        chan struct{}            // 并发限制
+	cancelled  map[uint64]bool            // 已取消任务标记 (运行循环检测后退出)
+	lastEmit   map[uint64]time.Time       // 进度事件节流: 上次发送时间
+	onProgress func(model.TransferTask)   // 进度回调, 由 app 层接 wails 事件
+	sem        chan struct{}              // 并发限制
 }
 
 // NewEngine 创建传输引擎
 func NewEngine() *Engine {
 	return &Engine{
-		tasks: make(map[uint64]*model.TransferTask),
-		sem:   make(chan struct{}, maxConcurrent),
+		tasks:     make(map[uint64]*model.TransferTask),
+		cancelled: make(map[uint64]bool),
+		lastEmit:  make(map[uint64]time.Time),
+		sem:       make(chan struct{}, maxConcurrent),
 	}
 }
 
@@ -114,6 +124,53 @@ func (e *Engine) Tasks() []model.TransferTask {
 	return out
 }
 
+// Cancel 取消指定任务 (运行中的传输在下一个 chunk 边界退出; 未开始的任务跳过)
+func (e *Engine) Cancel(taskID uint64) {
+	e.mu.Lock()
+	e.cancelled[taskID] = true
+	e.mu.Unlock()
+}
+
+// isCancelled 检查任务是否已取消
+func (e *Engine) isCancelled(taskID uint64) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.cancelled[taskID]
+}
+
+// Remove 从任务表移除指定任务 (仅允许非运行中的任务; 运行中需先 Cancel)
+func (e *Engine) Remove(taskID uint64) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t, ok := e.tasks[taskID]
+	if !ok {
+		return false
+	}
+	if t.Status == "running" {
+		return false
+	}
+	delete(e.tasks, taskID)
+	delete(e.cancelled, taskID)
+	delete(e.lastEmit, taskID)
+	return true
+}
+
+// RemoveFinished 清理全部已结束任务 (done / error / cancelled), 返回清理数量
+func (e *Engine) RemoveFinished() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	n := 0
+	for id, t := range e.tasks {
+		if t.Status != "running" {
+			delete(e.tasks, id)
+			delete(e.cancelled, id)
+			delete(e.lastEmit, id)
+			n++
+		}
+	}
+	return n
+}
+
 // ---------- 任务执行 ----------
 
 func (e *Engine) runUpload(sess *sshcore.Session, task *model.TransferTask, files []fileRef) {
@@ -125,6 +182,10 @@ func (e *Engine) runUpload(sess *sshcore.Session, task *model.TransferTask, file
 		return
 	}
 	for _, f := range files {
+		if e.isCancelled(task.TaskID) {
+			e.cancelTask(task)
+			return
+		}
 		var target string
 		if task.IsDir {
 			target = path.Join(task.RemotePath, f.relPath)
@@ -148,7 +209,11 @@ func (e *Engine) runUpload(sess *sshcore.Session, task *model.TransferTask, file
 		task.CurrentFile = f.absPath
 		e.emit(task)
 		if err := e.uploadFile(c, f.absPath, resolved, f.size, task); err != nil {
-			e.fail(task, err)
+			if errors.Is(err, errCancelled) {
+				e.cancelTask(task)
+			} else {
+				e.fail(task, err)
+			}
 			return
 		}
 	}
@@ -164,6 +229,10 @@ func (e *Engine) runDownload(sess *sshcore.Session, task *model.TransferTask, fi
 		return
 	}
 	for _, f := range files {
+		if e.isCancelled(task.TaskID) {
+			e.cancelTask(task)
+			return
+		}
 		var target string
 		if task.IsDir {
 			target = filepath.Join(task.LocalPath, filepath.FromSlash(f.relPath))
@@ -187,7 +256,11 @@ func (e *Engine) runDownload(sess *sshcore.Session, task *model.TransferTask, fi
 		task.CurrentFile = f.absPath
 		e.emit(task)
 		if err := e.downloadFile(c, f.absPath, resolved, f.size, task); err != nil {
-			e.fail(task, err)
+			if errors.Is(err, errCancelled) {
+				e.cancelTask(task)
+			} else {
+				e.fail(task, err)
+			}
 			return
 		}
 	}
@@ -221,6 +294,9 @@ func (e *Engine) uploadFile(c *sftp.Client, localPath, remotePath string, size i
 	defer remote.Close()
 	buf := make([]byte, chunkSize)
 	for {
+		if e.isCancelled(task.TaskID) {
+			return errCancelled
+		}
 		n, rerr := local.Read(buf)
 		if n > 0 {
 			if _, werr := remote.Write(buf[:n]); werr != nil {
@@ -269,6 +345,9 @@ func (e *Engine) downloadFile(c *sftp.Client, remotePath, localPath string, size
 	defer local.Close()
 	buf := make([]byte, chunkSize)
 	for {
+		if e.isCancelled(task.TaskID) {
+			return errCancelled
+		}
 		n, rerr := remote.Read(buf)
 		if n > 0 {
 			if _, werr := local.Write(buf[:n]); werr != nil {
@@ -427,9 +506,17 @@ func (e *Engine) newTask(sessionID uint64, direction, local, remote string, size
 	return task
 }
 
+// emit 发送进度事件; 运行中任务按 emitInterval 节流 (避免大文件高频事件压前端),
+// 结束态 (done/error/cancelled) 始终发送以保证前端收到最终状态
 func (e *Engine) emit(task *model.TransferTask) {
 	e.mu.Lock()
 	h := e.onProgress
+	now := time.Now()
+	if task.Status == "running" && now.Sub(e.lastEmit[task.TaskID]) < emitInterval {
+		e.mu.Unlock()
+		return
+	}
+	e.lastEmit[task.TaskID] = now
 	e.mu.Unlock()
 	if h != nil {
 		h(*task)
@@ -445,5 +532,13 @@ func (e *Engine) fail(task *model.TransferTask, err error) {
 func (e *Engine) done(task *model.TransferTask) {
 	task.CurrentFile = ""
 	task.Status = "done"
+	e.emit(task)
+}
+
+// cancelTask 标记任务为取消状态并发送最终事件
+func (e *Engine) cancelTask(task *model.TransferTask) {
+	task.CurrentFile = ""
+	task.Status = "cancelled"
+	task.Error = "传输已取消"
 	e.emit(task)
 }

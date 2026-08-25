@@ -122,6 +122,12 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	a.store = st
+	// 恢复上次保存的 AI 配置 (provider/model/限额)
+	if cfg, err := st.LoadAiConfig(); err == nil && cfg.Provider != "" {
+		a.aiProvider = cfg.Provider
+		a.aiModel = cfg.Model
+		a.aiMonthlyLimit = cfg.MonthlyLimit
+	}
 	a.engine.SetProgressHandler(func(t model.TransferTask) {
 		runtime.EventsEmit(ctx, "sftp-progress", t)
 	})
@@ -869,6 +875,21 @@ func (a *App) SftpDownload(id uint64, remotePath, localPath, conflict string) (u
 // SftpTasks 返回全部传输任务快照
 func (a *App) SftpTasks() []model.TransferTask {
 	return a.engine.Tasks()
+}
+
+// SftpCancelTask 取消传输任务 (运行中的在下个 chunk 边界停止)
+func (a *App) SftpCancelTask(taskID uint64) {
+	a.engine.Cancel(taskID)
+}
+
+// SftpRemoveTask 移除指定任务记录 (仅允许非运行中的)
+func (a *App) SftpRemoveTask(taskID uint64) bool {
+	return a.engine.Remove(taskID)
+}
+
+// SftpClearFinished 清理全部已结束任务 (done/error/cancelled), 返回清理数量
+func (a *App) SftpClearFinished() int {
+	return a.engine.RemoveFinished()
 }
 
 // EditRemoteFile 远程编辑: 下载到临时文件 → 系统默认编辑器打开 → 关闭后自动回传
@@ -1667,14 +1688,18 @@ func (a *App) AiSetKey(apiKey string) error {
 	return keyring.Set(aiKeyringService, aiKeyringKey, strings.TrimSpace(apiKey))
 }
 
-// AiConfigure 保存 AI 配置 (provider/model/月度限额)
+// AiConfigure 保存 AI 配置 (provider/model/月度限额), 持久化到 store, 重启后恢复
 func (a *App) AiConfigure(provider, model string, monthlyLimit int64) {
 	a.aiMu.Lock()
-	defer a.aiMu.Unlock()
 	a.aiProvider = provider
 	a.aiModel = model
 	if monthlyLimit > 0 {
 		a.aiMonthlyLimit = monthlyLimit
+	}
+	cfg := store.AiConfig{Provider: a.aiProvider, Model: a.aiModel, MonthlyLimit: a.aiMonthlyLimit}
+	a.aiMu.Unlock()
+	if a.store != nil {
+		_ = a.store.SaveAiConfig(cfg)
 	}
 }
 

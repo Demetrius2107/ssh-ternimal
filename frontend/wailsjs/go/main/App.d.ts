@@ -117,7 +117,11 @@ export function SearchHistory(arg1:string):Promise<Array<model.HistoryMatch>>;
 
 export function SessionMeta(arg1:number):Promise<string>;
 
+export function SftpCancelTask(arg1:number):Promise<void>;
+
 export function SftpChmod(arg1:number,arg2:string,arg3:number):Promise<void>;
+
+export function SftpClearFinished():Promise<number>;
 
 export function SftpDelete(arg1:number,arg2:string):Promise<void>;
 
@@ -128,6 +132,8 @@ export function SftpListDir(arg1:number,arg2:string):Promise<Array<model.FileEnt
 export function SftpMkdir(arg1:number,arg2:string):Promise<void>;
 
 export function SftpPwd(arg1:number):Promise<string>;
+
+export function SftpRemoveTask(arg1:number):Promise<boolean>;
 
 export function SftpRename(arg1:number,arg2:string,arg3:string):Promise<void>;
 

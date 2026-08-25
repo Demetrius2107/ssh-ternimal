@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SshClose, SshSend, PickFile } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 import { EventsOn } from '../wailsjs/runtime/runtime';
@@ -99,10 +99,23 @@ function formatSize(n: number): string {
     return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// 关闭某标签后应激活的相邻标签 id (优先右侧, 其次左侧, 无则 null)
+function neighborAfterClose(list: OpenSession[], closedId: number): number | null {
+    const idx = list.findIndex((s) => s.id === closedId);
+    if (idx < 0) return null;
+    const next = list[idx + 1] ?? list[idx - 1];
+    return next ? next.id : null;
+}
+
 // App 根组件: 会话标签栏 + 多会话工作区 + 新建连接模态
 function App() {
     const [openSessions, setOpenSessions] = useState<OpenSession[]>([]);
     const [activeId, setActiveId] = useState<number | null>(null);
+    // openSessions 的实时镜像: 供一次性注册的 ssh-exit effect 读取最新列表
+    const openSessionsRef = useRef(openSessions);
+    useEffect(() => {
+        openSessionsRef.current = openSessions;
+    }, [openSessions]);
     const [showConnect, setShowConnect] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
     const [showTunnel, setShowTunnel] = useState(false);
@@ -154,10 +167,11 @@ function App() {
     }
 
     // 会话意外结束 (ssh-exit) 时自动移除标签; EventsOn 返回注销函数
+    // 用 openSessionsRef 取最新列表 (effect 仅注册一次, 闭包里的 openSessions 会过期)
     useEffect(() => {
         const onExit = (e: { sessionId: number }) => {
             setOpenSessions((prev) => prev.filter((s) => s.id !== e.sessionId));
-            setActiveId((prev) => (prev === e.sessionId ? null : prev));
+            setActiveId((prev) => (prev === e.sessionId ? neighborAfterClose(openSessionsRef.current, e.sessionId) : prev));
         };
         return EventsOn('ssh-exit', onExit);
     }, []);
@@ -216,7 +230,8 @@ function App() {
     function closeSession(id: number) {
         SshClose(id);
         setOpenSessions((prev) => prev.filter((s) => s.id !== id));
-        setActiveId((prev) => (prev === id ? null : prev));
+        // 关闭当前激活标签时, 自动选中相邻标签 (而非空白)
+        setActiveId((prev) => (prev === id ? neighborAfterClose(openSessions, id) : prev));
     }
 
     function onConnected(id: number, label: string) {
@@ -279,25 +294,27 @@ function App() {
                         {Icon.squares} {splitMode ? '退出分屏' : '分屏'}
                     </button>
                 )}
-                {openSessions.map((s) => (
-                    <div
-                        key={s.id}
-                        className={`session-tab ${s.id === activeId ? 'active' : ''}`}
-                        onClick={() => setActiveId(s.id)}
-                        title={s.label}
-                    >
-                        <span className="st-label">{s.label}</span>
-                        <button
-                            className="tab-x"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                closeSession(s.id);
-                            }}
+                <div className="session-tabs-scroll">
+                    {openSessions.map((s) => (
+                        <div
+                            key={s.id}
+                            className={`session-tab ${s.id === activeId ? 'active' : ''}`}
+                            onClick={() => setActiveId(s.id)}
+                            title={s.label}
                         >
-                            ×
-                        </button>
-                    </div>
-                ))}
+                            <span className="st-label">{s.label}</span>
+                            <button
+                                className="tab-x"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    closeSession(s.id);
+                                }}
+                            >
+                                ×
+                            </button>
+                        </div>
+                    ))}
+                </div>
             </div>
             <div className={`session-body ${splitMode ? 'split' : ''}`}>
                 {settingsPage && (

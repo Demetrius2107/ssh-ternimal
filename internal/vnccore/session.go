@@ -193,7 +193,7 @@ func (s *Session) Start() error {
 	if err := s.sendSetEncodings([]int32{0}); err != nil { // 0 = Raw
 		return err
 	}
-	// 请求完整帧
+	// 首次: 请求完整帧 (非增量)
 	if err := s.sendFrameRequest(false, 0, 0, s.width, s.height); err != nil {
 		return err
 	}
@@ -210,6 +210,10 @@ func (s *Session) Start() error {
 		}
 		if updated && s.frame != nil {
 			s.frame(int(s.width), int(s.height), buf)
+		}
+		// RFB 需客户端主动请求才推送: 每次收到更新后请求下一次增量更新, 否则画面静止
+		if err := s.sendFrameRequest(true, 0, 0, s.width, s.height); err != nil {
+			return err
 		}
 	}
 }
@@ -249,18 +253,40 @@ func (s *Session) readFramebufferUpdate(buf []byte) (bool, error) {
 }
 
 // readRawRect 读取 Raw 编码矩形像素并写入缓冲
+// 越界保护: 即使 rect 超出 framebuffer 也必须消费完整像素数据 (保持流同步),
+// 但仅将落在画布内的部分写入 buf, 避免缓冲越界 panic
 func (s *Session) readRawRect(buf []byte, x, y, w, h uint16) error {
+	if s.pf.bpp == 0 || s.pf.bpp%8 != 0 {
+		return fmt.Errorf("非法像素位深 %d", s.pf.bpp)
+	}
 	pixelBytes := int(s.pf.bpp) / 8
+	// 读取完整矩形像素 (无论是否越界, 必须消费以保持流同步)
 	n := int(w) * int(h) * pixelBytes
 	px := make([]byte, n)
 	if _, err := io.ReadFull(s.r, px); err != nil {
 		return err
 	}
 	width := int(s.width)
-	idx := 0
-	for row := 0; row < int(h); row++ {
-		dst := (int(y)+row)*width + int(x)
-		for col := 0; col < int(w); col++ {
+	height := int(s.height)
+	x0, y0 := int(x), int(y)
+	// 完全在画布外: 仅消费像素, 不写入
+	if x0 >= width || y0 >= height {
+		return nil
+	}
+	// 可写入的列/行数 (越界部分丢弃)
+	cw := int(w)
+	if x0+cw > width {
+		cw = width - x0
+	}
+	ch := int(h)
+	if y0+ch > height {
+		ch = height - y0
+	}
+	fullW := int(w) // 原始行宽: 每行像素数据按此跨步, 跳过被裁掉的右尾
+	for row := 0; row < ch; row++ {
+		dst := (y0+row)*width + x0
+		idx := row * fullW * pixelBytes // 当前行在 px 中的起始偏移
+		for col := 0; col < cw; col++ {
 			raw := px[idx : idx+pixelBytes]
 			idx += pixelBytes
 			buf[dst*4] = s.red(raw)
@@ -273,27 +299,39 @@ func (s *Session) readRawRect(buf []byte, x, y, w, h uint16) error {
 	return nil
 }
 
-// red/green/blue 按像素格式提取分量 (true color 走 mask/shift)
+// red/green/blue 按像素格式提取分量 (true color 走 mask/shift; 掩码为 0 时返回 0, 避免除零)
 func (s *Session) red(raw []byte) byte {
 	if !s.pf.trueCol {
 		return raw[0]
 	}
+	rMax := uint32(s.pf.rMax)
+	if rMax == 0 {
+		return 0
+	}
 	v := s.pixelValue(raw)
-	return byte(((v >> s.pf.rShift) & uint32(s.pf.rMax)) * 255 / uint32(s.pf.rMax))
+	return byte(((v >> s.pf.rShift) & rMax) * 255 / rMax)
 }
 func (s *Session) green(raw []byte) byte {
 	if !s.pf.trueCol {
 		return raw[1]
 	}
+	gMax := uint32(s.pf.gMax)
+	if gMax == 0 {
+		return 0
+	}
 	v := s.pixelValue(raw)
-	return byte(((v >> s.pf.gShift) & uint32(s.pf.gMax)) * 255 / uint32(s.pf.gMax))
+	return byte(((v >> s.pf.gShift) & gMax) * 255 / gMax)
 }
 func (s *Session) blue(raw []byte) byte {
 	if !s.pf.trueCol {
 		return raw[2]
 	}
+	bMax := uint32(s.pf.bMax)
+	if bMax == 0 {
+		return 0
+	}
 	v := s.pixelValue(raw)
-	return byte(((v >> s.pf.bShift) & uint32(s.pf.bMax)) * 255 / uint32(s.pf.bMax))
+	return byte(((v >> s.pf.bShift) & bMax) * 255 / bMax)
 }
 
 // pixelValue 像素原始值 (按大小端与位深)

@@ -25,8 +25,16 @@ const (
 	credBucket     = "credentials"
 	alertBucket    = "alerts"
 	taskBucket     = "tasks"
+	metaBucket     = "meta" // 通用配置 (AI provider/model/限额等)
 	keyringService = "ssh-terminal"
 )
+
+// AiConfig AI 配置 (持久化到 meta bucket)
+type AiConfig struct {
+	Provider      string `json:"provider"`
+	Model         string `json:"model"`
+	MonthlyLimit  int64  `json:"monthlyLimit"`
+}
 
 // AlertConfig 监控告警配置 (CPU/内存/磁盘阈值 + 通知渠道)
 type AlertConfig struct {
@@ -105,6 +113,10 @@ func Open() (*Store, error) {
 			return err
 		}
 		_, err = tx.CreateBucketIfNotExists([]byte(taskBucket))
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists([]byte(metaBucket))
 		return err
 	}); err != nil {
 		db.Close()
@@ -271,6 +283,31 @@ func (s *Store) GetAIUsage(month string) (int64, error) {
 		return nil
 	})
 	return cur, err
+}
+
+// ---------- AI 配置 (meta bucket) ----------
+
+// SaveAiConfig 持久化 AI 配置 (provider/model/月度限额)
+func (s *Store) SaveAiConfig(c AiConfig) error {
+	data, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket([]byte(metaBucket)).Put([]byte("ai_config"), data)
+	})
+}
+
+// LoadAiConfig 读取 AI 配置 (无记录返回零值)
+func (s *Store) LoadAiConfig() (AiConfig, error) {
+	var c AiConfig
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		if v := tx.Bucket([]byte(metaBucket)).Get([]byte("ai_config")); v != nil {
+			return json.Unmarshal(v, &c)
+		}
+		return nil
+	})
+	return c, err
 }
 
 // ---------- 会话审计 (Audit) ----------
