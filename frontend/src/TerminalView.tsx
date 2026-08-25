@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SshSend, SshResize, ListSnippets, SessionMeta, AiExplain } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
 import { EventsOn } from '../wailsjs/runtime/runtime';
@@ -108,7 +109,7 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
             fontFamily,
             fontSize,
             cursorBlink: true,
-            scrollback: 10000,
+            scrollback: 50000, // 增大滚动缓冲 (原10000, 大日志不丢前段)
             // 双击选中单词是 xterm 内建默认行为
             theme: THEMES[theme].xterm,
         });
@@ -116,11 +117,26 @@ export default function TerminalView({ sessionId, active, theme, fontFamily, fon
         const search = new SearchAddon();
         term.loadAddon(fit);
         term.loadAddon(search);
+        term.loadAddon(new WebLinksAddon()); // URL 自动识别为可点击链接 (Ctrl+点击打开)
         term.open(containerRef.current!);
         fit.fit();
         SshResize(sessionId, term.rows, term.cols);
         termRef.current = term;
         searchAddonRef.current = search;
+
+        // Ctrl+C 智能复制: 有选中文本时复制到剪贴板 (不发中断信号);
+        // 无选中文本时发 \x03 中断远端进程 (与原生终端一致)
+        term.attachCustomKeyEventHandler((e) => {
+            if (e.type === 'keydown' && (e.ctrlKey || e.metaKey) && e.key === 'c') {
+                const sel = term.getSelection();
+                if (sel) {
+                    navigator.clipboard.writeText(sel).catch(() => {});
+                    term.clearSelection();
+                    return false; // 阻止 \x03 发往远端
+                }
+            }
+            return true;
+        });
 
         const onOutput = (e: SshOutput) => {
             if (e.sessionId !== sessionId) return;

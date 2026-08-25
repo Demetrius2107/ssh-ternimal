@@ -17,7 +17,7 @@ import {
     PickDir,
 } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
-import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
+import { EventsOn, EventsOff, OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime';
 
 function formatSize(n: number): string {
     if (n < 1024) return `${n} B`;
@@ -48,6 +48,7 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
     const [transfers, setTransfers] = useState<Record<number, model.TransferTask>>({});
     const [conflict, setConflict] = useState<'overwrite' | 'skip' | 'rename'>('overwrite');
     const [error, setError] = useState('');
+    const [dragOver, setDragOver] = useState(false); // 拖拽悬停高亮
 
     async function loadLocal(dir: string) {
         try {
@@ -188,6 +189,22 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
         }
     }
 
+    // 拖拽上传: 用 Wails OnFileDrop 监听, 拖入的文件路径由运行时提供 (比读 File.path 可靠)
+    // useDropTarget=true 仅在落点带 --wails-drop-target 的元素上触发
+    useEffect(() => {
+        OnFileDrop((_x, _y, paths) => {
+            setDragOver(false);
+            if (!paths || paths.length === 0) return;
+            for (const p of paths) {
+                if (!p) continue;
+                SftpUpload(sessionId, p, `${remoteDir}/${basename(p)}`, conflict)
+                    .catch((err: any) => setError(`拖拽上传 ${basename(p)} 失败: ${err?.message ?? err}`));
+            }
+        }, true);
+        return () => OnFileDropOff();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [remoteDir, conflict, sessionId]);
+
     async function doDownload() {
         if (!selRemote) {
             setError('请先在右侧选中远程文件或目录');
@@ -226,7 +243,7 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
                 {/* 本地栏 */}
                 <div className="pane">
                     <div className="pane-header">
-                        <button onClick={() => LocalParent(localDir).then((p) => loadLocal(p))}>⬆</button>
+                        <button onClick={() => LocalParent(localDir).then((p) => loadLocal(p)).catch((e: any) => setError(`本地: ${e?.message ?? e}`))}>⬆</button>
                         <input
                             value={localInput}
                             onChange={(e) => setLocalInput(e.target.value)}
@@ -240,18 +257,22 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
                         <button onClick={loadLocal.bind(null, localDir)}>刷新</button>
                     </div>
                     <div className="file-list">
-                        {localEntries.map((e) => (
-                            <div
-                                key={e.path}
-                                className={`file-row ${e.isDir ? 'row-dir' : 'row-file'} ${selLocal?.path === e.path ? 'selected' : ''}`}
-                                onClick={() => setSelLocal(e)}
-                                onDoubleClick={() => e.isDir && loadLocal(e.path)}
-                            >
-                                <span className="f-name">{e.isDir ? '📁 ' : '📄 '}{e.name}</span>
-                                <span className="f-size">{e.isDir ? '' : formatSize(e.size)}</span>
-                                <span className="f-time">{e.modTime}</span>
-                            </div>
-                        ))}
+                        {localEntries.length === 0 ? (
+                            <div className="file-empty">空目录</div>
+                        ) : (
+                            localEntries.map((e) => (
+                                <div
+                                    key={e.path}
+                                    className={`file-row ${e.isDir ? 'row-dir' : 'row-file'} ${selLocal?.path === e.path ? 'selected' : ''}`}
+                                    onClick={() => setSelLocal(e)}
+                                    onDoubleClick={() => e.isDir && loadLocal(e.path)}
+                                >
+                                    <span className="f-name">{e.isDir ? '📁 ' : '📄 '}{e.name}</span>
+                                    <span className="f-size">{e.isDir ? '' : formatSize(e.size)}</span>
+                                    <span className="f-time">{e.modTime}</span>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
                 {/* 远程栏 */}
@@ -273,19 +294,28 @@ export default function FilePanel({ sessionId }: { sessionId: number }) {
                         </button>
                         <button onClick={loadRemote.bind(null, remoteDir)}>刷新</button>
                     </div>
-                    <div className="file-list">
-                        {remoteEntries.map((e) => (
-                            <div
-                                key={e.path}
-                                className={`file-row ${e.isDir ? 'row-dir' : 'row-file'} ${selRemote?.path === e.path ? 'selected' : ''}`}
-                                onClick={() => setSelRemote(e)}
-                                onDoubleClick={() => e.isDir && loadRemote(e.path)}
-                            >
-                                <span className="f-name">{e.isDir ? '📁 ' : '📄 '}{e.name}</span>
-                                <span className="f-size">{e.isDir ? '' : formatSize(e.size)}</span>
-                                <span className="f-time">{e.modTime}</span>
-                            </div>
-                        ))}
+                    <div
+                        className={`file-list wails-drop-target ${dragOver ? 'drag-over' : ''}`}
+                        style={{ ['--wails-drop-target' as any]: 'drag' }}
+                        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                        onDragLeave={() => setDragOver(false)}
+                    >
+                        {remoteEntries.length === 0 ? (
+                            <div className="file-empty">{dragOver ? '松开以上传到当前目录' : '空目录 (可将文件拖拽到此处上传)'}</div>
+                        ) : (
+                            remoteEntries.map((e) => (
+                                <div
+                                    key={e.path}
+                                    className={`file-row ${e.isDir ? 'row-dir' : 'row-file'} ${selRemote?.path === e.path ? 'selected' : ''}`}
+                                    onClick={() => setSelRemote(e)}
+                                    onDoubleClick={() => e.isDir && loadRemote(e.path)}
+                                >
+                                    <span className="f-name">{e.isDir ? '📁 ' : '📄 '}{e.name}</span>
+                                    <span className="f-size">{e.isDir ? '' : formatSize(e.size)}</span>
+                                    <span className="f-time">{e.modTime}</span>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
             </div>

@@ -374,6 +374,26 @@ body.theme-light {
     font-size: 12px;
 }
 
+/* 空目录提示 */
+.file-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 120px;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    text-align: center;
+    padding: 16px;
+}
+
+/* 拖拽悬停高亮 (远程列表作为拖放目标, --wails-drop-target 由 FilePanel 内联设置) */
+.file-list.drag-over {
+    background: rgba(10, 132, 255, 0.08);
+    outline: 2px dashed var(--accent);
+    outline-offset: -4px;
+}
+
 .file-row {
     display: flex;
     gap: 8px;
