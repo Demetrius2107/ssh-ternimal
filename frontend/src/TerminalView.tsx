@@ -8,6 +8,7 @@ import { model } from '../wailsjs/go/models';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { THEMES, type ThemeName } from './themes';
 import { loadShortcuts, matchShortcut } from './shortcuts';
+import { AI_ERROR_RE } from './lib/detect';
 import '@xterm/xterm/css/xterm.css';
 
 export type { ThemeName } from './themes';
@@ -46,11 +47,7 @@ function colorizeLog(data: string): string {
     return out;
 }
 
-// 高置信度报错检测正则: 匹配行首的标准错误格式, 避免误报
-// (如 grep error 的输出、readme 含 "error" 字样不会触发)
-// 要求: Error:/FATAL/Traceback 等在行首, 或 Permission denied/command not found 等完整短语
-const AI_ERROR_RE = /(^|\n)\s*(Error:|ERROR:|FATAL|Traceback|Exception|Permission denied|command not found|No such file or directory|Connection refused|Access denied|操作不允许|无法访问|连接超时|认证失败)/i;
-
+// ---------- 终端组件 ----------
 // TerminalView 终端组件: 输出渲染/输入转发/尺寸同步/查找/右键菜单/主题实时切换
 export default function TerminalView({ sessionId, active, theme, fontFamily, fontSize }: { sessionId: number; active: boolean; theme: ThemeName; fontFamily: string; fontSize: number }) {
     const containerRef = useRef<HTMLDivElement>(null);

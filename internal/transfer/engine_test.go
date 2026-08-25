@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -99,5 +100,81 @@ func Test本地目标不存在时应直接可用(t *testing.T) {
 	target, skip, err := resolveLocalTarget(p, "overwrite")
 	if err != nil || skip || target != p {
 		t.Fatalf("不存在目标应直接可用: %q %v %v", target, skip, err)
+	}
+}
+
+// ---------- 取消 / 移除 路径 ----------
+
+// TestCancelMarksCancelled Cancel 后任务标记为已取消
+func Test取消任务后应标记为已取消(t *testing.T) {
+	e := NewEngine()
+	task := e.newTask(1, "upload", "/l", "/r", 100, "overwrite", false)
+	e.Cancel(task.TaskID)
+	if !e.isCancelled(task.TaskID) {
+		t.Fatal("Cancel 后 isCancelled 应为 true")
+	}
+}
+
+// TestCancelTaskStatus 运行中循环检测到取消后状态置为 cancelled
+func Test运行中检测到取消时状态置为已取消(t *testing.T) {
+	e := NewEngine()
+	task := e.newTask(1, "upload", "/l", "/r", 100, "overwrite", false)
+	e.Cancel(task.TaskID)
+	e.cancelTask(task)
+	if task.Status != "cancelled" {
+		t.Fatalf("状态应为 cancelled, got %q", task.Status)
+	}
+	if task.Error != "传输已取消" {
+		t.Fatalf("取消任务的错误信息不符: %q", task.Error)
+	}
+}
+
+// TestRemoveRunningRefused 运行中任务不可移除
+func Test运行中任务不可移除(t *testing.T) {
+	e := NewEngine()
+	task := e.newTask(1, "upload", "/l", "/r", 100, "overwrite", false)
+	if e.Remove(task.TaskID) {
+		t.Fatal("运行中任务不应被移除")
+	}
+	if _, ok := e.tasks[task.TaskID]; !ok {
+		t.Fatal("移除被拒后任务应仍在表中")
+	}
+}
+
+// TestRemoveFinished 已结束任务可移除
+func Test已结束任务可移除(t *testing.T) {
+	e := NewEngine()
+	task := e.newTask(1, "upload", "/l", "/r", 100, "overwrite", false)
+	e.done(task)
+	if !e.Remove(task.TaskID) {
+		t.Fatal("已结束任务应可移除")
+	}
+	if _, ok := e.tasks[task.TaskID]; ok {
+		t.Fatal("移除后任务不应仍在表中")
+	}
+	// 移除会连带清掉取消标记
+	if e.isCancelled(task.TaskID) {
+		t.Fatal("移除后取消标记应一并清除")
+	}
+}
+
+// TestRemoveFinishedOnlyFinished RemoveFinished 只清理非运行中任务
+func Test清理已完成仅删非运行中任务(t *testing.T) {
+	e := NewEngine()
+	running := e.newTask(1, "upload", "/l1", "/r", 100, "overwrite", false)
+	done := e.newTask(1, "download", "/l2", "/r", 100, "overwrite", false)
+	errored := e.newTask(1, "upload", "/l3", "/r", 100, "overwrite", false)
+	e.done(done)
+	e.fail(errored, errors.New("boom"))
+
+	n := e.RemoveFinished()
+	if n != 2 {
+		t.Fatalf("应清理 2 个非运行中任务, got %d", n)
+	}
+	if _, ok := e.tasks[running.TaskID]; !ok {
+		t.Fatal("运行中任务不应被清理")
+	}
+	if len(e.tasks) != 1 {
+		t.Fatalf("清理后应只剩运行中任务, got %d", len(e.tasks))
 	}
 }

@@ -13,6 +13,7 @@ import {
     MoveSession,
 } from '../wailsjs/go/main/App';
 import { model } from '../wailsjs/go/models';
+import { parseHostKeyMessage } from './lib/detect';
 
 interface Props {
     onConnected: (id: number, label: string) => void;
@@ -185,11 +186,10 @@ export default function ConnectForm({ onConnected, onCancel }: Props) {
         } catch (e: any) {
             const msg = e?.message ?? String(e);
             // strict 模式首次连接: 后端返回 HOST_KEY_UNVERIFIED|host|port|fingerprint
-            if (msg.startsWith('HOST_KEY_UNVERIFIED|')) {
-                const parts = msg.split('|');
-                const fp = parts[3] ?? '';
+            const hk = parseHostKeyMessage(msg);
+            if (hk) {
                 const ok = window.confirm(
-                    `⚠️ 主机密钥未验证\n\n${host}:${port} 是首次连接的主机。\n\nSHA256 指纹:\n${fp}\n\n是否信任该主机并继续连接?`,
+                    `⚠️ 主机密钥未验证\n\n${host}:${port} 是首次连接的主机。\n\nSHA256 指纹:\n${hk.fingerprint}\n\n是否信任该主机并继续连接?`,
                 );
                 if (ok) {
                     try {
