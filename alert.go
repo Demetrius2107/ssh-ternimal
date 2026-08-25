@@ -26,13 +26,19 @@ type alertState struct {
 	firing map[string]bool
 }
 
-// startAlertEngine 启动告警轮询引擎 (应用启动时调用, 常驻运行)
+// startAlertEngine 启动告警轮询引擎 (应用启动时调用, stopCh 关闭时退出)
 func (a *App) startAlertEngine() {
 	as := &alertState{firing: map[string]bool{}}
 	go func() {
+		ticker := time.NewTicker(alertPollInterval)
+		defer ticker.Stop()
 		for {
-			time.Sleep(alertPollInterval)
-			a.checkAlerts(as)
+			select {
+			case <-a.stopCh:
+				return
+			case <-ticker.C:
+				a.checkAlerts(as)
+			}
 		}
 	}()
 }

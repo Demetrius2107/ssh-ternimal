@@ -56,6 +56,7 @@ type SshReconnect struct {
 // App 应用结构 (wails 绑定层, 方法转发到 internal 包)
 type App struct {
 	ctx      context.Context
+	stopCh   chan struct{} // 应用关闭信号 (通知后台引擎退出)
 	sessions map[uint64]model.TermSession
 	history  map[uint64]*historyFile
 	nextID   uint64
@@ -116,6 +117,7 @@ func NewApp() *App {
 // startup 保存上下文、初始化会话存储、接线进度事件
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.stopCh = make(chan struct{})
 	st, err := store.Open()
 	if err != nil {
 		println("初始化会话存储失败:", err.Error())
@@ -135,6 +137,16 @@ func (a *App) startup(ctx context.Context) {
 	a.startAlertEngine()
 	// 启动定时任务引擎 (常驻轮询)
 	a.startTaskEngine()
+}
+
+// shutdown 应用退出时调用: 通知后台引擎停止, 关闭存储
+func (a *App) shutdown(ctx context.Context) {
+	if a.stopCh != nil {
+		close(a.stopCh)
+	}
+	if a.store != nil {
+		a.store.Close()
+	}
 }
 
 // getSession 按 ID 取会话 (通用终端接口)
@@ -968,6 +980,18 @@ func (a *App) EditorSaveLocal(localPath, content string) error {
 	return nil
 }
 
+// EditorLoadLocal 读取本地文件内容 (片段导入等场景复用)
+func (a *App) EditorLoadLocal(localPath string) (string, error) {
+	if localPath == "" {
+		return "", errors.New("本地路径不能为空")
+	}
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return "", fmt.Errorf("读取本地文件失败: %v", err)
+	}
+	return string(data), nil
+}
+
 // ---------- 客户端更新 ----------
 
 // appVersion 当前版本号 (与 wails.json Info.productVersion 保持一致)
@@ -1655,14 +1679,14 @@ func (a *App) ListSnippets() ([]model.Snippet, error) {
 }
 
 // SaveSnippet 保存命令片段 (id 为空时新建), 返回 ID
-func (a *App) SaveSnippet(name, command, id string) (string, error) {
+func (a *App) SaveSnippet(name, command, group, id string) (string, error) {
 	if a.store == nil {
 		return "", errors.New("会话存储未初始化")
 	}
 	if name == "" || command == "" {
 		return "", errors.New("名称和命令不能为空")
 	}
-	return a.store.SaveSnippet(model.Snippet{ID: id, Name: name, Command: command})
+	return a.store.SaveSnippet(model.Snippet{ID: id, Name: name, Command: command, Group: group})
 }
 
 // DeleteSnippet 删除命令片段
@@ -1671,6 +1695,43 @@ func (a *App) DeleteSnippet(id string) error {
 		return errors.New("会话存储未初始化")
 	}
 	return a.store.DeleteSnippet(id)
+}
+
+// ExportSnippets 导出全部命令片段为 JSON 字符串 (供用户备份/迁移)
+func (a *App) ExportSnippets() (string, error) {
+	if a.store == nil {
+		return "", errors.New("会话存储未初始化")
+	}
+	list, err := a.store.ListSnippets()
+	if err != nil {
+		return "", err
+	}
+	data, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// ImportSnippets 从 JSON 字符串导入命令片段 (合并, 同名 ID 覆盖), 返回导入数量
+func (a *App) ImportSnippets(jsonStr string) (int, error) {
+	if a.store == nil {
+		return 0, errors.New("会话存储未初始化")
+	}
+	var list []model.Snippet
+	if err := json.Unmarshal([]byte(jsonStr), &list); err != nil {
+		return 0, fmt.Errorf("JSON 格式无效: %v", err)
+	}
+	n := 0
+	for _, sn := range list {
+		if sn.Name == "" || sn.Command == "" {
+			continue
+		}
+		if _, err := a.store.SaveSnippet(sn); err == nil {
+			n++
+		}
+	}
+	return n, nil
 }
 
 // ---------- AI 辅助 ----------

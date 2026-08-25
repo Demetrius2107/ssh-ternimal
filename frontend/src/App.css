@@ -1896,6 +1896,87 @@ body.theme-light .home-empty {
     flex-shrink: 0;
 }
 
+/* 片段工具栏: 分组过滤 + 计数 + 导入导出 */
+.snippet-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.snippet-group-filter {
+    padding: 6px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--input);
+    color: var(--text);
+    font-size: 12.5px;
+    cursor: pointer;
+    outline: none;
+}
+
+.snippet-count {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.snippet-toolbar-spacer {
+    flex: 1;
+}
+
+.snippet-toolbar button {
+    padding: 6px 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--hover);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.snippet-toolbar button:hover {
+    background: var(--border-strong);
+}
+
+/* 分组标签 (片段名旁) */
+.si-group {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(10, 132, 255, 0.15);
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 400;
+}
+
+.si-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.si-edit {
+    padding: 3px 10px;
+    border: none;
+    border-radius: 6px;
+    background: var(--border-strong);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.si-edit:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+.snippet-cancel {
+    background: var(--border-strong) !important;
+    color: var(--text) !important;
+}
+
 .snippet-panel .hint {
     padding: 10px 0 0;
     font-size: 12px;

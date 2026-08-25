@@ -214,6 +214,7 @@ export namespace model {
 	    id: string;
 	    name: string;
 	    command: string;
+	    group: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Snippet(source);
@@ -224,6 +225,7 @@ export namespace model {
 	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.command = source["command"];
+	        this.group = source["group"];
 	    }
 	}
 	export class SshConfig {

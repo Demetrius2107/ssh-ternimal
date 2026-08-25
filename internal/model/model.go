@@ -168,6 +168,7 @@ type Snippet struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Command string `json:"command"`
+	Group   string `json:"group"` // 分组名 (空=未分组, 便于分类管理)
 }
 
 // Tunnel SSH 端口转发 (隧道)

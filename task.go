@@ -15,12 +15,18 @@ import (
 
 const taskTickInterval = time.Second
 
-// startTaskEngine 启动定时任务引擎 (应用启动时调用, 常驻运行)
+// startTaskEngine 启动定时任务引擎 (应用启动时调用, stopCh 关闭时退出)
 func (a *App) startTaskEngine() {
 	go func() {
+		ticker := time.NewTicker(taskTickInterval)
+		defer ticker.Stop()
 		for {
-			time.Sleep(taskTickInterval)
-			a.checkTasks()
+			select {
+			case <-a.stopCh:
+				return
+			case <-ticker.C:
+				a.checkTasks()
+			}
 		}
 	}()
 }
@@ -52,15 +58,14 @@ func (a *App) checkTasks() {
 // runTask 执行单个定时任务
 func (a *App) runTask(t store.Task, now time.Time) {
 	// 会话断开处理: 会话不存在时标记失败 (但不删除任务, 重连后自动恢复)
-	sess, err := a.getSession(t.SessionID)
-	if err != nil {
+	if _, err := a.getSession(t.SessionID); err != nil {
 		t.LastRun = now.Format("2006-01-02 15:04:05")
 		t.LastError = "会话不存在或已断开"
 		_, _ = a.store.SaveTask(t)
 		return
 	}
-	// 执行命令: 复用 SshSend (含命令录制), 输出随会话历史落盘
-	if err := sess.Send(t.Command + "\r"); err != nil {
+	// 执行命令: 走 SshSend (含命令录制, 输出随会话历史落盘, 与用户手动输入一致)
+	if err := a.SshSend(t.SessionID, t.Command+"\r"); err != nil {
 		t.LastRun = now.Format("2006-01-02 15:04:05")
 		t.LastError = fmt.Sprintf("发送失败: %v", err)
 		_, _ = a.store.SaveTask(t)

@@ -39,11 +39,15 @@ export function DownloadUpdate(arg1:string):Promise<string>;
 
 export function EditRemoteFile(arg1:number,arg2:string):Promise<void>;
 
+export function EditorLoadLocal(arg1:string):Promise<string>;
+
 export function EditorLoadRemote(arg1:number,arg2:string):Promise<string>;
 
 export function EditorSaveLocal(arg1:string,arg2:string):Promise<void>;
 
 export function EditorSaveRemote(arg1:number,arg2:string,arg3:string):Promise<void>;
+
+export function ExportSnippets():Promise<string>;
 
 export function GetAlertConfig():Promise<store.AlertConfig>;
 
@@ -58,6 +62,8 @@ export function GetSessionMetrics(arg1:number):Promise<model.Metrics>;
 export function GetSysMetrics(arg1:number):Promise<model.SysMetrics>;
 
 export function GetSysMetricsHistory(arg1:number):Promise<Array<model.SysMetrics>>;
+
+export function ImportSnippets(arg1:string):Promise<number>;
 
 export function LaunchRdp(arg1:string,arg2:number,arg3:string):Promise<void>;
 
@@ -109,7 +115,7 @@ export function SaveCredential(arg1:string,arg2:string,arg3:string,arg4:string):
 
 export function SaveSession(arg1:model.SshConfig,arg2:string,arg3:string,arg4:string):Promise<string>;
 
-export function SaveSnippet(arg1:string,arg2:string,arg3:string):Promise<string>;
+export function SaveSnippet(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
 export function SaveTask(arg1:string,arg2:number,arg3:number,arg4:string,arg5:boolean,arg6:string):Promise<string>;
 

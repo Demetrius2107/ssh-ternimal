@@ -74,6 +74,10 @@ export function EditRemoteFile(arg1, arg2) {
   return window['go']['main']['App']['EditRemoteFile'](arg1, arg2);
 }
 
+export function EditorLoadLocal(arg1) {
+  return window['go']['main']['App']['EditorLoadLocal'](arg1);
+}
+
 export function EditorLoadRemote(arg1, arg2) {
   return window['go']['main']['App']['EditorLoadRemote'](arg1, arg2);
 }
@@ -84,6 +88,10 @@ export function EditorSaveLocal(arg1, arg2) {
 
 export function EditorSaveRemote(arg1, arg2, arg3) {
   return window['go']['main']['App']['EditorSaveRemote'](arg1, arg2, arg3);
+}
+
+export function ExportSnippets() {
+  return window['go']['main']['App']['ExportSnippets']();
 }
 
 export function GetAlertConfig() {
@@ -112,6 +120,10 @@ export function GetSysMetrics(arg1) {
 
 export function GetSysMetricsHistory(arg1) {
   return window['go']['main']['App']['GetSysMetricsHistory'](arg1);
+}
+
+export function ImportSnippets(arg1) {
+  return window['go']['main']['App']['ImportSnippets'](arg1);
 }
 
 export function LaunchRdp(arg1, arg2, arg3) {
@@ -214,8 +226,8 @@ export function SaveSession(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SaveSession'](arg1, arg2, arg3, arg4);
 }
 
-export function SaveSnippet(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SaveSnippet'](arg1, arg2, arg3);
+export function SaveSnippet(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SaveSnippet'](arg1, arg2, arg3, arg4);
 }
 
 export function SaveTask(arg1, arg2, arg3, arg4, arg5, arg6) {
