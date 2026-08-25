@@ -30,3 +30,6 @@ Thumbs.db
 
 # AtomCode agent 配置
 .atomcode/
+
+# ZCode 计划文件
+.zcode/
