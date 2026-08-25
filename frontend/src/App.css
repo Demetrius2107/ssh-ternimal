@@ -2032,6 +2032,81 @@ body.theme-light .home-empty {
     white-space: nowrap;
 }
 
+/* 审计回放控制条: 播放/暂停/跳转/速度/进度 */
+.replay-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--hover);
+    border-bottom: 1px solid var(--border);
+    border-radius: 8px 8px 0 0;
+    flex-wrap: wrap;
+}
+
+.replay-controls button {
+    padding: 5px 12px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.replay-controls button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.replay-speed {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.replay-speed select {
+    padding: 4px 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--input);
+    color: var(--text);
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+}
+
+.replay-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 120px;
+}
+
+.replay-bar {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+}
+
+.replay-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.1s linear;
+}
+
+.replay-pct {
+    color: var(--text-muted);
+    font-size: 11px;
+    min-width: 36px;
+    text-align: right;
+}
+
 .log-content {
     margin: 0;
     padding: 10px;
@@ -3102,12 +3177,15 @@ body.theme-light .about-desc {
 }
 
 .editor-textarea {
-    flex: 1;
-    min-height: 0;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
     width: 100%;
+    height: 100%;
     padding: 12px 16px;
-    background: var(--bg);
-    color: #d4d4d4;
+    background: transparent; /* 高亮层透过显示 */
+    color: transparent;      /* 文字由高亮层着色显示, 仅保留光标 */
+    caret-color: #d4d4d4;
     border: none;
     outline: none;
     resize: none;
@@ -3116,6 +3194,56 @@ body.theme-light .about-desc {
     line-height: 1.6;
     tab-size: 4;
     white-space: pre;
+    overflow: auto;
+}
+
+.editor-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    background: var(--bg);
+    overflow: hidden;
+}
+
+/* 高亮层: 与 textarea 完全同尺寸同字体, 只读渲染 */
+.editor-highlight {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    margin: 0;
+    padding: 12px 16px;
+    background: var(--bg);
+    color: #d4d4d4;
+    font-family: Consolas, 'SF Mono', 'Courier New', monospace;
+    font-size: 13.5px;
+    line-height: 1.6;
+    tab-size: 4;
+    white-space: pre;
+    overflow: hidden; /* 滚动由 textarea 驱动 */
+    pointer-events: none;
+}
+
+/* 高亮 token 配色 */
+.hl-comment { color: #6a9955; font-style: italic; }
+.hl-shebang { color: #6a9955; }
+.hl-string { color: #ce9178; }
+.hl-number { color: #b5cea8; }
+.hl-keyword { color: #569cd6; font-weight: 500; }
+.hl-attr { color: #9cdcfe; }
+
+/* 亮色主题高亮配色 */
+body.theme-light .editor-highlight {
+    background: #ffffff;
+    color: #1d1d1f;
+}
+body.theme-light .hl-comment,
+body.theme-light .hl-shebang { color: #008000; }
+body.theme-light .hl-string { color: #a31515; }
+body.theme-light .hl-number { color: #098658; }
+body.theme-light .hl-keyword { color: #0000ff; }
+body.theme-light .hl-attr { color: #001080; }
+body.theme-light .editor-textarea {
+    caret-color: #1d1d1f;
 }
 
 .editor-textarea::placeholder {
@@ -3144,8 +3272,8 @@ body.theme-light .editor-toolbar button {
 }
 
 body.theme-light .editor-textarea {
-    background: #ffffff;
-    color: #1d1d1f;
+    background: transparent;
+    color: transparent;
 }
 
 /* ---------- 内嵌 VNC 桌面 ---------- */
